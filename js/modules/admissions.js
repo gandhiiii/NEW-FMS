@@ -3,7 +3,21 @@ const BED_LABELS = ['A', 'B', 'C'];
 
 function getRooms() {
     var rooms = DB.get('rooms');
-    return rooms || [];
+    if (!rooms || rooms.length === 0) return [];
+    if (!DB.get('_rooms_v2')) {
+        var isOldSeed = rooms.length === 48;
+        for (var i = 0; i < rooms.length && isOldSeed; i++) {
+            var n = parseInt(rooms[i].roomNo);
+            if (n < 402 || n > 617 || (n > 417 && n < 502) || (n > 517 && n < 602)) isOldSeed = false;
+        }
+        if (isOldSeed) {
+            DB.set('rooms', []);
+            DB.set('_rooms_v2', true);
+            return [];
+        }
+        DB.set('_rooms_v2', true);
+    }
+    return rooms;
 }
 
 function getBedsByRoom(roomNo) {
