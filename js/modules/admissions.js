@@ -3,21 +3,7 @@ const BED_LABELS = ['A', 'B', 'C'];
 
 function getRooms() {
     var rooms = DB.get('rooms');
-    if (!rooms || rooms.length === 0) {
-        var defaults = [];
-        var floors = [4, 5, 6];
-        for (var f = 0; f < floors.length; f++) {
-            var floor = floors[f];
-            var start = 400 + floor * 100 + 2;
-            for (var r = 0; r < 16; r++) {
-                var roomNo = String(start + r);
-                defaults.push({ id: 'room_' + roomNo, roomNo: roomNo, floor: floor, category: 'Semi Special', beds: ['A', 'B', 'C'] });
-            }
-        }
-        DB.set('rooms', defaults);
-        return defaults;
-    }
-    return rooms;
+    return rooms || [];
 }
 
 function getBedsByRoom(roomNo) {
