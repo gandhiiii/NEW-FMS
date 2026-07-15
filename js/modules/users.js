@@ -31,49 +31,67 @@ function renderUsers(container) {
 
 function renderUsersList() {
     try {
-        var users = DB.get('users');
-        var search = (document.getElementById('userSearch')?.value || '').toLowerCase();
-        var filtered = users.filter(function(u) {
-            if (!u || typeof u !== 'object') return false;
-            return (u.fullName || '').toLowerCase().includes(search) ||
-                (u.username || '').toLowerCase().includes(search) ||
-                (u.email || '').toLowerCase().includes(search) ||
-                (u.role || '').includes(search) ||
-                (u.department || '').toLowerCase().includes(search);
-        });
-        var tbody = document.getElementById('usersTableBody');
-        if (!tbody) { console.warn('usersTableBody not found'); return; }
+        var users = DB.get('users') || [];
 
-        tbody.innerHTML = filtered.map(function(u) {
-            if (!u || typeof u !== 'object') return '';
-            var deptFeatures = typeof getDepartmentFeatures === 'function' ? getDepartmentFeatures(u.department) : [];
-            var userPerms = u.permissions || [];
-            var totalPerms = new Set([].concat(deptFeatures, userPerms)).size;
-            return '<tr>'
-                + '<td><strong>' + (u.username || '?') + '</strong></td>'
-                + '<td>' + (u.fullName || '?') + '</td>'
-                + '<td>' + (u.email || '?') + '</td>'
-                + '<td>' + (u.phone || '?') + '</td>'
-                + '<td><span class="badge ' + APP.getRoleBadge(u.role || 'employee') + '">' + ((u.role || 'employee').toUpperCase()) + '</span></td>'
-                + '<td>' + (u.department || '-') + '</td>'
+        var searchInput = document.getElementById('userSearch');
+        var search = '';
+        if (searchInput) search = searchInput.value.toLowerCase();
+
+        var rows = '';
+        var valid = [];
+
+        for (var i = 0; i < users.length; i++) {
+            var u = users[i];
+            if (!u || typeof u !== 'object') continue;
+
+            var fullName = typeof u.fullName === 'string' ? u.fullName : '';
+            var username = typeof u.username === 'string' ? u.username : '';
+            var email = typeof u.email === 'string' ? u.email : '';
+            var role = typeof u.role === 'string' ? u.role : 'employee';
+            var department = typeof u.department === 'string' ? u.department : '';
+            var phone = typeof u.phone === 'string' ? u.phone : '';
+            var uid = typeof u.id === 'string' ? u.id : '';
+            var isSuperAdmin = !!u.isSuperAdmin;
+            var permissions = Array.isArray(u.permissions) ? u.permissions : [];
+
+            var match = fullName.toLowerCase().includes(search) ||
+                username.toLowerCase().includes(search) ||
+                email.toLowerCase().includes(search) ||
+                role.includes(search) ||
+                department.toLowerCase().includes(search);
+
+            if (!match) continue;
+            valid.push(u);
+
+            var deptFeatures = typeof getDepartmentFeatures === 'function' ? getDepartmentFeatures(department) : [];
+            var totalPerms = new Set(deptFeatures.concat(permissions)).size;
+
+            rows += '<tr>'
+                + '<td><strong>' + username.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</strong></td>'
+                + '<td>' + fullName.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</td>'
+                + '<td>' + email.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</td>'
+                + '<td>' + phone.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</td>'
+                + '<td><span class="badge ' + APP.getRoleBadge(role) + '">' + role.toUpperCase() + '</span></td>'
+                + '<td>' + (department || '-') + '</td>'
                 + '<td style="font-size:12px;"><span class="badge badge-info">' + totalPerms + ' modules</span>'
                 + (deptFeatures.length > 0 ? '<span style="color:var(--gray);display:block;">' + deptFeatures.length + ' from dept</span>' : '')
                 + '</td>'
-                + '<td><button class="btn btn-sm btn-primary" onclick="editUser(\'' + u.id + '\')">Edit</button> '
-                + '<button class="btn btn-sm btn-danger" onclick="deleteUser(\'' + u.id + '\')"' + (u.isSuperAdmin ? ' disabled' : '') + '>Del</button></td>'
+                + '<td><button class="btn btn-sm btn-primary" onclick="editUser(\'' + uid.replace(/'/g,'') + '\')">Edit</button> '
+                + '<button class="btn btn-sm btn-danger" onclick="deleteUser(\'' + uid.replace(/'/g,'') + '\')"' + (isSuperAdmin ? ' disabled' : '') + '>Del</button></td>'
                 + '</tr>';
-        }).join('') || '<tr><td colspan="8" class="empty-state">No users found</td></tr>';
+        }
 
-        var valid = users.filter(function(u) { return u && typeof u === 'object'; });
         if (valid.length !== users.length) {
             DB.set('users', valid);
-            console.warn('Cleaned ' + (users.length - valid.length) + ' corrupted user entries');
         }
+
+        var tbody = document.getElementById('usersTableBody');
+        if (tbody) tbody.innerHTML = rows || '<tr><td colspan="8" class="empty-state">No users found</td></tr>';
 
         var countEl = document.getElementById('userCount');
         if (countEl) countEl.textContent = valid.length + ' users';
     } catch (e) {
-        console.warn('renderUsersList error:', e);
+        console.warn('renderUsersList error:', e.message, e.stack);
         if (typeof APP !== 'undefined' && APP.notify) APP.notify('Error loading users: ' + e.message, 'error');
         var tbody = document.getElementById('usersTableBody');
         if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Error loading users</td></tr>';
