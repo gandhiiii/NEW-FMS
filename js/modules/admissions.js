@@ -1,26 +1,11 @@
 const ROOM_CATEGORIES = ['Super Deluxe', 'Deluxe Special', 'Semi Special', 'Twin', 'Triple'];
 const BED_LABELS = ['A', 'B', 'C'];
-var _roomCache = null;
-window.addEventListener('storage', function(e) { if (e.key === 'hms_rooms') _roomCache = null; });
-
 function getRooms() {
-    if (_roomCache !== null) return _roomCache;
-    try {
-        var raw = localStorage.getItem('hms_rooms');
-        _roomCache = raw ? JSON.parse(raw) : [];
-    } catch (e) {
-        _roomCache = [];
-    }
-    return _roomCache;
+    return DB.get('rooms');
 }
 
 function saveRooms(rooms) {
-    _roomCache = rooms;
-    try {
-        localStorage.setItem('hms_rooms', JSON.stringify(rooms));
-    } catch (e) {
-        console.warn('saveRooms error:', e);
-    }
+    DB.set('rooms', rooms);
 }
 
 function getBedsByRoom(roomNo) {

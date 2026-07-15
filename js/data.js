@@ -13,12 +13,20 @@ const DB = {
     },
 
     get(key) {
-        try { return JSON.parse(localStorage.getItem('hms_' + key)) || []; }
-        catch { return []; }
+        try {
+            var raw = localStorage.getItem('hms_' + key);
+            if (raw) return JSON.parse(raw);
+        } catch (e) {}
+        try {
+            var raw = sessionStorage.getItem('hms_' + key);
+            if (raw) return JSON.parse(raw);
+        } catch (e) {}
+        return [];
     },
     set(key, data) {
-        try { localStorage.setItem('hms_' + key, JSON.stringify(data)); }
-        catch (e) { console.warn('DB.set error:', e); }
+        var json = JSON.stringify(data);
+        try { localStorage.setItem('hms_' + key, json); } catch (e) { console.warn('localStorage set error:', e); }
+        try { sessionStorage.setItem('hms_' + key, json); } catch (e) { console.warn('sessionStorage set error:', e); }
     },
     add(key, item) {
         const items = this.get(key);
