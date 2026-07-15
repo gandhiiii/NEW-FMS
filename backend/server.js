@@ -47,12 +47,17 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Serve built frontend in production
+// Serve built frontend
 const distPath = path.join(__dirname, '../frontend/dist');
 app.use(express.static(distPath));
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) return;
-  res.sendFile(path.join(distPath, 'index.html'));
+  const indexPath = path.join(distPath, 'index.html');
+  if (require('fs').existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(200).send('<h1>Hospital Management System</h1><p>Frontend not built yet. Run: cd frontend && npm install && npm run build</p>');
+  }
 });
 
 require('./socket')(io);
