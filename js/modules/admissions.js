@@ -285,6 +285,26 @@ function renderRoomManagementList() {
     tbody.innerHTML = html || '<tr><td colspan="5" class="empty-state">No rooms</td></tr>';
 }
 
+function confirmDeleteRoom(id, roomNo) {
+    var adms = DB.get('admissions') || [];
+    var hasPatients = false;
+    for (var i = 0; i < adms.length; i++) {
+        if (adms[i].roomNo === roomNo && adms[i].status === 'admitted') { hasPatients = true; break; }
+    }
+    var msg = 'Remove Room ' + roomNo + '?';
+    if (hasPatients) msg += ' This room has admitted patients — they will be affected.';
+    confirmAction(msg, function() {
+        var rooms = getRooms();
+        var updated = [];
+        for (var i = 0; i < rooms.length; i++) {
+            if (rooms[i].id !== id) updated.push(rooms[i]);
+        }
+        DB.set('rooms', updated);
+        renderRoomView();
+        APP.notify('Room ' + roomNo + ' removed', 'success');
+    });
+}
+
 /* ═══════════════════════════════════════
    ROOM VIEW
    ═══════════════════════════════════════ */
@@ -373,7 +393,8 @@ function renderRoomView() {
 
             var catColor = '#78909c';
             html += '<div class="room-card" data-room="' + roomNo + '" onclick="showRoomDetail(\'' + roomNo + '\')"';
-            html += ' style="background:' + bg + ';border-radius:10px;padding:12px;cursor:pointer;border:2px solid ' + borderColor + ';">';
+            html += ' style="background:' + bg + ';border-radius:10px;padding:12px;cursor:pointer;border:2px solid ' + borderColor + ';position:relative;">';
+            html += '<span onclick="event.stopPropagation();confirmDeleteRoom(\'' + rm.id + '\',\'' + roomNo + '\')" style="position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,0.15);color:#666;font-size:12px;font-weight:700;text-align:center;line-height:20px;cursor:pointer;display:none;" class="room-del-btn" title="Remove room">&times;</span>';
             html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">';
             html += '<div style="font-size:20px;font-weight:700;">' + roomNo + '</div>';
             html += '<span style="font-size:10px;color:' + catColor + ';background:#eceff1;padding:2px 6px;border-radius:4px;">' + rm.category + '</span>';

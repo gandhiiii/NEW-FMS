@@ -316,5 +316,8 @@ tr:hover td { background: var(--primary-light); }
 /* Responsive table wrapper */
 .table-responsive { overflow-x: auto; }
 
+/* Room card delete button */
+.room-card:hover .room-del-btn { display:block !important; }
+
 /* Live sync indicator pulse */
 @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
