@@ -89,7 +89,8 @@ const AUTH = {
             let users = DB.get('users');
             if (!Array.isArray(users) || users.length === 0) {
                 const admin = { ...DEFAULT_ADMIN, createdAt: new Date().toISOString() };
-                DB.set('users', [admin]);
+                const emp = { id: 'emp_default', username: 'employee', password: 'emp123', fullName: 'Default Employee', email: 'emp@hospital.com', phone: '9876543211', role: 'employee', department: 'Maintenance', permissions: ['dashboard','problems','tasks','checklists','material-requests','employee-dashboard','projects','inventory'] };
+                DB.set('users', [admin, emp]);
             } else {
                 const hasAdmin = users.some(u => u.isSuperAdmin || u.username === 'admin');
                 if (!hasAdmin) {
@@ -110,8 +111,9 @@ const AUTH = {
             let users = DB.get('users');
             if (!Array.isArray(users) || users.length === 0) {
                 const admin = { ...DEFAULT_ADMIN, createdAt: new Date().toISOString() };
-                DB.set('users', [admin]);
-                users = [admin];
+                const emp = { id: 'emp_default', username: 'employee', password: 'emp123', fullName: 'Default Employee', email: 'emp@hospital.com', phone: '9876543211', role: 'employee', department: 'Maintenance', permissions: ['dashboard','problems','tasks','checklists','material-requests','employee-dashboard','projects','inventory'] };
+                DB.set('users', [admin, emp]);
+                users = [admin, emp];
             }
             const user = users.find(u => u.username === username && u.password === password);
             if (user) {
