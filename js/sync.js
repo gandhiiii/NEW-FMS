@@ -10,22 +10,29 @@ const SYNC = {
         return this._initPromise;
     },
 
-    _status(msg, type) {
-        const el = document.getElementById('liveIndicator');
-        if (!el) return;
-        if (type === 'error') {
-            el.innerHTML = '<span style="color:var(--danger)">&#9679; SYNC ERR</span>';
-            el.style.background = 'rgba(234,67,53,0.1)';
-            el.style.borderColor = 'var(--danger)';
-        } else if (type === 'ok') {
-            el.innerHTML = '<span style="width:7px;height:7px;border-radius:50%;background:var(--success);display:inline-block;animation:pulse 1.5s infinite;"></span> SYNC';
-            el.style.background = 'rgba(52,168,83,0.1)';
-            el.style.borderColor = 'rgba(52,168,83,0.3)';
-        } else {
-            el.innerHTML = '<span style="width:7px;height:7px;border-radius:50%;background:#fbbc04;display:inline-block;"></span> SYNC...';
-            el.style.background = 'rgba(251,188,4,0.1)';
-            el.style.borderColor = '#fbbc04';
+    async _status(msg, type) {
+        for (let i = 0; i < 50; i++) {
+            const el = document.getElementById('liveIndicator');
+            if (el) {
+                if (type === 'error') {
+                    el.innerHTML = '<span style="color:var(--danger)">&#9679; SYNC ERR</span>';
+                    el.style.background = 'rgba(234,67,53,0.1)';
+                    el.style.borderColor = 'var(--danger)';
+                } else if (type === 'ok') {
+                    el.innerHTML = '<span style="width:7px;height:7px;border-radius:50%;background:var(--success);display:inline-block;animation:pulse 1.5s infinite;"></span> SYNC';
+                    el.style.background = 'rgba(52,168,83,0.1)';
+                    el.style.borderColor = 'rgba(52,168,83,0.3)';
+                } else {
+                    el.innerHTML = '<span style="width:7px;height:7px;border-radius:50%;background:#fbbc04;display:inline-block;"></span> SYNC...';
+                    el.style.background = 'rgba(251,188,4,0.1)';
+                    el.style.borderColor = '#fbbc04';
+                }
+                return;
+            }
+            if (i === 0) console.log('SYNC: waiting for liveIndicator...');
+            await new Promise(r => setTimeout(r, 100));
         }
+        console.warn('SYNC: liveIndicator not found after 5s');
     },
 
     async _init() {
@@ -40,11 +47,13 @@ const SYNC = {
             await this._db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
             this._patchDB();
             this._ready = true;
-            await this._syncFromServer();
-            this._listen();
-            this._status('Connected', 'ok');
-            if (APP && APP.refreshCurrent) APP.refreshCurrent();
-            this._startPolling();
+            const syncOk = await this._syncFromServer();
+            if (syncOk) {
+                this._listen();
+                this._status('Connected', 'ok');
+                if (APP && APP.refreshCurrent) APP.refreshCurrent();
+                this._startPolling();
+            }
         } catch (e) {
             this._status('Init: ' + (e.message || e), 'error');
             console.warn('Firebase init error:', e);
@@ -95,9 +104,11 @@ const SYNC = {
                     }
                 });
             }
+            return true;
         } catch (e) {
             this._status('Sync: ' + (e.message || e), 'error');
             console.warn('Firebase sync error:', e);
+            return false;
         }
     },
 
