@@ -22,6 +22,7 @@ const Router = {
             </div>
             <div class="header-right">
                 <span id="liveIndicator" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:#fbbc04;padding:3px 8px;border-radius:12px;background:rgba(251,188,4,0.1);border:1px solid #fbbc04;"><span style="width:7px;height:7px;border-radius:50%;background:#fbbc04;display:inline-block;"></span>LIVE</span>
+                <button class="btn btn-sm btn-outline" onclick="SYNC.reSync()" title="Force re-sync from server" style="font-size:11px;padding:2px 8px;">&#x21bb;</button>
                 <span style="font-size:13px;color:var(--gray);">${user.role.toUpperCase()}</span>
                 <div class="header-user" onclick="Router.showProfile()">
                     <div class="avatar">${user.fullName.charAt(0)}</div>

@@ -201,6 +201,15 @@ const SYNC = {
         setTimeout(() => this._status('Connected', 'ok'), 1000);
     },
 
+    async reSync() {
+        this._status('Syncing...', 'busy');
+        const ok = await this._syncFromServer();
+        if (ok) {
+            this._status('Connected', 'ok');
+            if (APP && APP.refreshCurrent) APP.refreshCurrent();
+        }
+    },
+
     _startPolling() {
         setInterval(() => {
             if (!this._ready) return;
@@ -213,7 +222,7 @@ const SYNC = {
                     }
                 });
                 if (changed) this._refreshUI();
-            }).catch(() => {});
+            }).catch(e => console.warn('FS poll err:', e));
         }, 15000);
     }
 };
