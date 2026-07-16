@@ -6,12 +6,16 @@ const REPORT_CATEGORIES = [
     { id: 'admissions', label: 'Admissions' },
     { id: 'inventory', label: 'Inventory' },
     { id: 'gate-security', label: 'Gate Security' },
+    { id: 'ambulance', label: 'Ambulance Vehicles' },
     { id: 'ambulance_trips', label: 'Ambulance Trips' },
     { id: 'problems', label: 'Problems & Solutions' },
     { id: 'projects', label: 'Projects' },
     { id: 'material_requests', label: 'Material Requests' },
     { id: 'suggestions', label: 'Suggestions' },
-    { id: 'lostfound', label: 'Lost & Found' }
+    { id: 'lostfound', label: 'Lost & Found' },
+    { id: 'phase2_materials', label: 'Phase 2 Infra - Materials' },
+    { id: 'phase2_tasks', label: 'Phase 2 Infra - Tasks' },
+    { id: 'work_reports', label: 'Work Progress / Reports' }
 ];
 
 const REPORT_COLLECTIONS = {
@@ -22,12 +26,16 @@ const REPORT_COLLECTIONS = {
     admissions: 'admissions',
     inventory: 'inventory',
     'gate-security': 'gatesecurity',
+    ambulance: 'ambulance',
     ambulance_trips: 'ambulance_trips',
     problems: 'problems',
     projects: 'projects',
     material_requests: 'material_requests',
     suggestions: 'suggestions',
-    lostfound: 'lostfound'
+    lostfound: 'lostfound',
+    phase2_materials: 'phase2',
+    phase2_tasks: 'phase2Tasks',
+    work_reports: 'reports'
 };
 
 function renderReports(container) {
@@ -389,9 +397,19 @@ function getColumns(catId) {
         projects: ['Title', 'Department', 'Budget', 'Status', 'Start', 'Deadline'],
         material_requests: ['Title', 'Requested By', 'Department', 'Status', 'Urgency', 'Created'],
         suggestions: ['Title', 'Created By', 'Department', 'Status', 'Created'],
-        lostfound: ['Item', 'Category', 'Status', 'Location', 'Date', 'Reported By']
+        lostfound: ['Item', 'Category', 'Status', 'Location', 'Date', 'Reported By'],
+        ambulance: ['Vehicle No', 'Driver', 'Status', 'Speed', 'Last Updated'],
+        phase2_materials: ['Material', 'Direction', 'Quantity', 'Unit', 'Vehicle', 'Supplier', 'Date'],
+        phase2_tasks: ['Title', 'Assigned To', 'Status', 'Progress', 'Start', 'Deadline'],
+        work_reports: ['Title', 'Category', 'Created By', 'Sent To', 'Status', 'Date']
     };
     return all[catId] || ['Name', 'Status', 'Date'];
+}
+
+function getStatusCounts(items) {
+    const st = {};
+    items.forEach(i => { const s = i.status || 'N/A'; st[s] = (st[s] || 0) + 1; });
+    return st;
 }
 
 function getRows(catId, items) {
@@ -410,7 +428,11 @@ function getRows(catId, items) {
         projects: items.map(i => [f(i.title), f(i.department), f(i.budget), f(i.status), f(i.startDate ? APP.formatDate(i.startDate) : '-'), f(i.deadline ? APP.formatDate(i.deadline) : '-')]),
         material_requests: items.map(i => [f(i.title), f(i.requestedBy), f(i.department), f(i.status), f(i.urgency), d(i)]),
         suggestions: items.map(i => [f(i.title), f(i.createdBy), f(i.department), f(i.status), d(i)]),
-        lostfound: items.map(i => [f(i.itemName || i.name), f(i.category), f(i.status), f(i.location), d(i), f(i.reportedBy)])
+        lostfound: items.map(i => [f(i.itemName || i.name), f(i.category), f(i.status), f(i.location), d(i), f(i.reportedBy)]),
+        ambulance: items.map(i => [f(i.vehicleNo), f(i.driverName || i.driver || '-'), f(i.status || '-'), f(i.speed || '0'), f(i.lastUpdated ? APP.formatDateTime(i.lastUpdated) : '-')]),
+        phase2_materials: items.map(i => [f(i.materialName || i.name), f(i.direction || '-'), f(i.quantity || '0'), f(i.unit || '-'), f(i.vehicleNo || '-'), f(i.supplier || '-'), d(i)]),
+        phase2_tasks: items.map(i => [f(i.title), f(i.assignedTo || '-'), f(i.status || '-'), (i.progress || '0') + '%', f(i.startDate ? APP.formatDate(i.startDate) : '-'), f(i.deadline ? APP.formatDate(i.deadline) : '-')]),
+        work_reports: items.map(i => [f(i.title), f(i.category || '-'), f(i.createdByName || i.createdBy || '-'), f(i.sentTo || '-'), f(i.status || '-'), d(i)])
     };
     return all[catId] || items.map(i => [f(i.title || i.name || i.fullName || i.patientName || i.itemName), f(i.status), d(i)]);
 }
