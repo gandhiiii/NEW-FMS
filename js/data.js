@@ -533,7 +533,7 @@ const APP = {
         const check = async () => {
             try {
                 const now = new Date();
-                if (now.getHours() < 5) return;
+                if (now.getHours() < 17) return;
                 if (!SYNC._ready) return;
                 const today = this._todayStr();
                 const doc = await SYNC._db.collection('_meta').doc('dailyClReset').get();
