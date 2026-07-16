@@ -107,14 +107,15 @@ function renderClList() {
                     const st = item.status || 'pending';
                     return `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:6px 8px;border-radius:4px;background:${st === 'pending' ? 'var(--bg)' : '#f0faf0'};font-size:13px;">
                         <span style="flex:1;min-width:80px;">${item.task}</span>
-                        ${item.unit ? '<span style="font-size:11px;color:var(--gray);background:var(--bg);padding:2px 6px;border-radius:4px;border:1px solid #ddd;">' + item.unit + '</span>' : ''}
-                        ${isAssignee(c) && c.status !== 'completed' ? `
-                            <div class="cl-toggle-group">
-                                ${CL_STATUSES.map(s => `<button class="cl-toggle-btn ${st === s ? 'active' : ''}" data-color="${s}" onclick="updateClItemStatus('${c.id}',${idx},'${s}')">${s.toUpperCase()}</button>`).join('')}
+                        ${item.unit ? `
+                            <div style="display:flex;align-items:center;gap:3px;">
+                                <input type="text" class="form-control" style="width:55px;padding:2px 4px;font-size:12px;text-align:center;min-height:28px;" value="${item.value || ''}" placeholder="0" onchange="updateClItemValue('${c.id}',${idx},this.value)">
+                                <span style="font-size:11px;font-weight:600;color:var(--gray);min-width:18px;">${item.unit}</span>
                             </div>
-                        ` : `
-                            <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;color:white;background:${statusColor(st)};">${statusText(st)}</span>
-                        `}
+                        ` : ''}
+                        <div class="cl-toggle-group">
+                            ${CL_STATUSES.map(s => `<button class="cl-toggle-btn ${st === s ? 'active' : ''}" data-color="${s}" onclick="updateClItemStatus('${c.id}',${idx},'${s}')">${s.toUpperCase()}</button>`).join('')}
+                        </div>
                     </div>`;
                 }).join('')}
             </div>
@@ -272,10 +273,13 @@ function saveCl() {
     if (items.length === 0) { APP.notify('Add at least one checklist item', 'error'); return; }
     if (id) {
         const existing = DB.getById('checklists', id);
-        const statusMap = {};
-        (existing?.items || []).forEach(item => { statusMap[item.task] = item.status; });
+        const existingMap = {};
+        (existing?.items || []).forEach(item => { existingMap[item.task] = { status: item.status, value: item.value }; });
         items.forEach(item => {
-            if (statusMap[item.task] !== undefined) item.status = statusMap[item.task];
+            if (existingMap[item.task] !== undefined) {
+                item.status = existingMap[item.task].status;
+                item.value = existingMap[item.task].value;
+            }
         });
         DB.update('checklists', id, { title, assignedTo, floor, deadline, description, items, status, department });
         APP.notify('Checklist updated', 'success');
@@ -317,6 +321,13 @@ function updateClItemStatus(id, idx, value) {
     DB.update('checklists', id, { items: cl.items, status: cl.status, completedAt: cl.completedAt });
     APP.notify('Item set to ' + value.toUpperCase(), 'success');
     renderClList();
+}
+
+function updateClItemValue(id, idx, value) {
+    const cl = DB.getById('checklists', id);
+    if (!cl || !cl.items[idx]) return;
+    cl.items[idx].value = value;
+    DB.update('checklists', id, { items: cl.items });
 }
 
 function completeCl(id) {

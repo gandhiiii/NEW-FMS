@@ -144,16 +144,12 @@ function renderAuditList() {
                     return `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:6px 8px;border-radius:4px;background:${st === 'pending' ? 'var(--bg)' : '#f0faf0'};font-size:13px;">
                         <span style="flex:1;min-width:80px;">${item.task}</span>
                         ${item.notes ? '<span style="font-size:11px;color:var(--gray);">📝 ' + item.notes + '</span>' : ''}
-                        ${a.status !== 'completed' ? `
-                            <div class="cl-toggle-group">
-                                <button class="cl-toggle-btn ${st === 'ok' ? 'active' : ''}" data-color="ok" onclick="updateAuditItem('${a.id}',${idx},'ok')">OK</button>
-                                <button class="cl-toggle-btn ${st === 'fault' ? 'active' : ''}" data-color="fault" onclick="updateAuditItem('${a.id}',${idx},'fault')">FAULT</button>
-                                <button class="cl-toggle-btn ${st === 'na' ? 'active' : ''}" data-color="na" onclick="updateAuditItem('${a.id}',${idx},'na')">N/A</button>
-                                <button class="cl-toggle-btn ${st === 'problem' ? 'active' : ''}" data-color="problem" onclick="updateAuditItem('${a.id}',${idx},'problem')">PROBLEM</button>
-                            </div>
-                        ` : `
-                            <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;color:white;background:${sc[st] || '#e9ecef'};">${(st || 'PENDING').toUpperCase()}</span>
-                        `}
+                        <div class="cl-toggle-group">
+                            <button class="cl-toggle-btn ${st === 'ok' ? 'active' : ''}" data-color="ok" onclick="updateAuditItem('${a.id}',${idx},'ok')">OK</button>
+                            <button class="cl-toggle-btn ${st === 'fault' ? 'active' : ''}" data-color="fault" onclick="updateAuditItem('${a.id}',${idx},'fault')">FAULT</button>
+                            <button class="cl-toggle-btn ${st === 'na' ? 'active' : ''}" data-color="na" onclick="updateAuditItem('${a.id}',${idx},'na')">N/A</button>
+                            <button class="cl-toggle-btn ${st === 'problem' ? 'active' : ''}" data-color="problem" onclick="updateAuditItem('${a.id}',${idx},'problem')">PROBLEM</button>
+                        </div>
                     </div>`;
                 }).join('')}
             </div>
