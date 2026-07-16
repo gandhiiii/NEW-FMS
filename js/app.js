@@ -21,7 +21,7 @@ const Router = {
                 <h3 id="pageTitle" style="font-size:18px;font-weight:600;">Dashboard</h3>
             </div>
             <div class="header-right">
-                <span id="liveIndicator" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:var(--success);padding:3px 8px;border-radius:12px;background:rgba(52,168,83,0.1);border:1px solid rgba(52,168,83,0.3);"><span style="width:7px;height:7px;border-radius:50%;background:var(--success);animation:pulse 1.5s infinite;"></span>LIVE</span>
+                <span id="liveIndicator" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:#fbbc04;padding:3px 8px;border-radius:12px;background:rgba(251,188,4,0.1);border:1px solid #fbbc04;"><span style="width:7px;height:7px;border-radius:50%;background:#fbbc04;display:inline-block;"></span>LIVE</span>
                 <span style="font-size:13px;color:var(--gray);">${user.role.toUpperCase()}</span>
                 <div class="header-user" onclick="Router.showProfile()">
                     <div class="avatar">${user.fullName.charAt(0)}</div>

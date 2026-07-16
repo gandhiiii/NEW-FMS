@@ -37,7 +37,6 @@
     <script src="js/data.js?v=6"></script>
     <script src="js/firebase-config.js"></script>
     <script src="js/sync.js"></script>
-    <script>SYNC.init();</script>
     <script src="js/app.js?v=6"></script>
     <script src="js/modules/dashboard-module.js?v=6"></script>
     <script src="js/modules/users.js?v=6"></script>
@@ -60,7 +59,10 @@
     <script src="js/modules/suggestions.js?v=6"></script>
     <script src="js/modules/employee-dashboard.js?v=6"></script>
     <script>
-        window.addEventListener('DOMContentLoaded', () => Router.init());
+        window.addEventListener('DOMContentLoaded', () => {
+            Router.init();
+            setTimeout(() => { try { SYNC.init(); } catch(e) { console.warn('Sync init:', e); } }, 500);
+        });
     </script>
 </body>
 </html>
