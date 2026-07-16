@@ -625,26 +625,28 @@ function renderIndivResult(container, ctx) {
     }, 100);
 }
 
-/* ─── Export Excel (multi-sheet XML) ─── */
+/* ─── Export Excel (HTML-based multi-sheet) ─── */
 
-function escXml(v) {
-    return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+function escCell(v) {
+    return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
 }
 
-function buildSheetXml(name, cols, rows) {
-    let xml = '  <Worksheet ss:Name="' + escXml(name) + '">\n    <Table>\n';
+function buildHtmlSheet(name, cols, rows) {
+    const safeName = escCell(name).replace(/[\[\]*?\/\\:&]/g, '').substring(0, 31) || 'Sheet';
+    let html = '<table><tr><td colspan="' + (cols ? cols.length : 1) + '" style="font-weight:bold;font-size:14px;background:#1a73e8;color:#fff;padding:8px;">' + safeName + '</td></tr>';
     if (cols && cols.length) {
-        xml += '      <Row>' + cols.map(c => '<Cell><Data ss:Type="String">' + escXml(c) + '</Data></Cell>').join('') + '</Row>\n';
+        html += '<tr>' + cols.map(c => '<th style="background:#4285f4;color:#fff;padding:6px 10px;font-size:11px;text-align:left;">' + escCell(c) + '</th>').join('') + '</tr>';
     }
     rows.forEach(r => {
-        xml += '      <Row>' + r.map(c => '<Cell><Data ss:Type="String">' + escXml(c) + '</Data></Cell>').join('') + '</Row>\n';
+        if (!r || !r.length) return;
+        html += '<tr>' + r.map(c => '<td style="padding:4px 8px;border:1px solid #ddd;font-size:11px;">' + escCell(c) + '</td>').join('') + '</tr>';
     });
-    xml += '    </Table>\n  </Worksheet>\n';
-    return xml;
+    html += '</table><br><br>';
+    return { html, name: safeName };
 }
 
 function excelSheet(name, cols, rows) {
-    return buildSheetXml(name.replace(/[\[\]*?\/\\]/g, '').substring(0, 31), cols, rows);
+    return buildHtmlSheet(name, cols, rows);
 }
 
 function exportExcel() {
@@ -653,7 +655,7 @@ function exportExcel() {
         const { sections, type, from, to } = _lastReportData;
         const users = DB.get('users') || [];
         const employees = users.filter(u => !u.isSuperAdmin);
-        let sheets = '';
+        let sheets = [];
         let sheetCount = 0;
 
         function addSheet(name, cols, rows) {
@@ -661,7 +663,8 @@ function exportExcel() {
                 if (!rows || !rows.length) return;
                 const safe = rows.filter(r => r && r.length);
                 if (!safe.length) return;
-                sheets += excelSheet(name, cols || [], safe);
+                const result = excelSheet(name, cols || [], safe);
+                sheets.push(result);
                 sheetCount++;
             } catch (e) { console.warn('Sheet skip [' + name + ']:', e); }
         }
@@ -752,17 +755,26 @@ function exportExcel() {
 
         if (!sheetCount) { APP.notify('No data to export', 'error'); return; }
 
-        const xml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
-            '<?mso-application progid="Excel.Sheet"?>\n' +
-            '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"\n' +
-            ' xmlns:o="urn:schemas-microsoft-com:office:office"\n' +
-            ' xmlns:x="urn:schemas-microsoft-com:office:excel"\n' +
-            ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n' +
-            ' <DocumentProperties><Title>' + escXml(_lastReportTitle) + '</Title></DocumentProperties>\n' +
-            sheets +
-            '</Workbook>';
+        const sheetNames = [];
+        let bodyHtml = '';
+        sheets.forEach(s => {
+            sheetNames.push(s.name);
+            bodyHtml += s.html;
+        });
 
-        const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
+        let html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+        html += '<head><meta charset="UTF-8"><title>' + escCell(_lastReportTitle) + '</title>';
+        html += '<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:Worksheets>';
+        sheetNames.forEach(n => { html += '<x:Worksheet><x:Name>' + escCell(n) + '</x:Name></x:Worksheet>'; });
+        html += '</x:Worksheets></x:ExcelWorkbook></xml><![endif]-->';
+        html += '<style>body{font-family:Arial,sans-serif;}table{border-collapse:collapse;width:100%;margin-bottom:16px;}th{background:#4285f4;color:#fff;padding:6px 10px;font-size:11px;text-align:left;border:1px solid #1a73e8;}td{padding:4px 8px;border:1px solid #ddd;font-size:11px;}tr:nth-child(even){background:#f8f9fa;}</style>';
+        html += '</head><body>';
+        html += '<h1 style="font-size:18px;color:#1a73e8;">' + escCell(_lastReportTitle) + '</h1>';
+        html += '<p style="font-size:11px;color:#888;">Generated: ' + new Date().toLocaleString() + ' | ' + sheetCount + ' sheets</p>';
+        html += bodyHtml;
+        html += '</body></html>';
+
+        const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
         link.download = _lastReportTitle.replace(/\s+/g, '_') + '.xls';
