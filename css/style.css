@@ -220,42 +220,14 @@ tr:hover td { background: var(--primary-light); }
     font-weight: 600; font-size: 14px;
 }
 .page-content { padding: 24px; }
-.menu-toggle { display: none; background: none; border: none; font-size: 24px; cursor: pointer; color: var(--dark); padding: 4px 8px; }
-/* Backdrop shown behind the mobile sidebar */
-.sidebar-backdrop {
-    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
-    z-index: 99; opacity: 0; transition: opacity 0.3s;
-}
-.sidebar-backdrop.show { display: block; opacity: 1; }
+.menu-toggle { display: none; background: none; border: none; font-size: 24px; cursor: pointer; color: var(--dark); }
 @media (max-width: 768px) {
-    .sidebar { transform: translateX(-100%); box-shadow: var(--shadow-lg); }
+    .sidebar { transform: translateX(-100%); }
     .sidebar.open { transform: translateX(0); }
-    .main-content { margin-left: 0; width: 100%; }
+    .main-content { margin-left: 0; }
     .menu-toggle { display: block; }
     .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
-    .search-box input { min-width: 0; flex: 1; }
-    .search-box { width: 100%; }
-    .page-content { padding: 16px; }
-    .main-header { padding: 0 12px; gap: 8px; }
-    .header-right { gap: 8px; }
-    .header-user .header-name { display: none; }
-    .header-role { display: none; }
-    .flex-between { flex-wrap: wrap; gap: 8px; }
-    .modal-content { width: 100%; max-width: 100%; max-height: 92vh; padding: 16px; border-radius: var(--radius); }
-    .stats-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
-    .stat-card { padding: 14px; }
-    .stat-card .stat-value { font-size: 22px; }
-    table { font-size: 13px; }
-    th, td { padding: 8px; }
-}
-@media (max-width: 420px) {
-    .stats-grid { grid-template-columns: 1fr; }
-    .btn { padding: 8px 12px; }
-}
-/* Larger, finger-friendly tap targets on touch devices */
-@media (hover: none) and (pointer: coarse) {
-    .sidebar-nav .nav-item { padding: 14px 20px; }
-    .btn-sm { padding: 6px 12px; font-size: 13px; }
+    .search-box input { min-width: 150px; }
 }
 /* Login Page */
 .login-page {

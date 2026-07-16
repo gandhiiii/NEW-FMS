@@ -1,15 +1,6 @@
 const DB = {
     _channel: typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('hms_sync') : null,
     _listeners: [],
-    _mem: {},            // in-memory fallback when localStorage is unavailable (private mode / quota)
-    _hasLS: (function () {
-        try {
-            var t = '__hms_test__';
-            localStorage.setItem(t, '1');
-            localStorage.removeItem(t);
-            return true;
-        } catch (e) { return false; }
-    })(),
 
     on(event, fn) {
         this._listeners.push({ event, fn });
@@ -21,38 +12,21 @@ const DB = {
         }
     },
 
-    // Low-level string accessors (single source of truth = localStorage, memory fallback)
-    _read(fullKey) {
-        if (this._hasLS) {
-            try {
-                var raw = localStorage.getItem(fullKey);
-                if (raw !== null) return raw;
-            } catch (e) {}
-        }
-        return Object.prototype.hasOwnProperty.call(this._mem, fullKey) ? this._mem[fullKey] : null;
-    },
-    _write(fullKey, json) {
-        this._mem[fullKey] = json;
-        if (this._hasLS) {
-            try { localStorage.setItem(fullKey, json); } catch (e) { console.warn('localStorage set error:', e); }
-        }
-    },
-    _remove(fullKey) {
-        delete this._mem[fullKey];
-        if (this._hasLS) {
-            try { localStorage.removeItem(fullKey); } catch (e) {}
-        }
-    },
-
     get(key) {
-        var raw = this._read('hms_' + key);
-        if (raw) {
-            try { return JSON.parse(raw); } catch (e) {}
-        }
+        try {
+            var raw = localStorage.getItem('hms_' + key);
+            if (raw) return JSON.parse(raw);
+        } catch (e) {}
+        try {
+            var raw = sessionStorage.getItem('hms_' + key);
+            if (raw) return JSON.parse(raw);
+        } catch (e) {}
         return [];
     },
     set(key, data) {
-        this._write('hms_' + key, JSON.stringify(data));
+        var json = JSON.stringify(data);
+        try { localStorage.setItem('hms_' + key, json); } catch (e) { console.warn('localStorage set error:', e); }
+        try { sessionStorage.setItem('hms_' + key, json); } catch (e) { console.warn('sessionStorage set error:', e); }
     },
     add(key, item) {
         const items = this.get(key);
@@ -98,6 +72,18 @@ const DEFAULT_ADMIN = {
 };
 
 const AUTH = {
+    _sid() {
+        try {
+            let p = new URLSearchParams(window.location.search);
+            let s = p.get('sid');
+            if (s && localStorage.getItem('hms_sid_' + s)) return s;
+        } catch (e) {}
+        try {
+            let t = sessionStorage.getItem('hms_t');
+            if (t && localStorage.getItem(t)) return t.replace('hms_u_', '');
+        } catch (e) {}
+        return null;
+    },
     init() {
         try {
             let users = DB.get('users');
@@ -105,46 +91,38 @@ const AUTH = {
                 const admin = { ...DEFAULT_ADMIN, createdAt: new Date().toISOString() };
                 DB.set('users', [admin]);
             } else {
-                const hasAdmin = users.some(u => u && (u.isSuperAdmin || u.username === 'admin'));
+                const hasAdmin = users.some(u => u.isSuperAdmin || u.username === 'admin');
                 if (!hasAdmin) {
                     const admin = { ...DEFAULT_ADMIN, createdAt: new Date().toISOString() };
                     users.push(admin);
                     DB.set('users', users);
                 }
             }
-            if (!Array.isArray(DB.get('resetTokens'))) {
+            if (!localStorage.getItem('hms_resetTokens') || typeof DB.get('resetTokens')?.length === 'undefined') {
                 DB.set('resetTokens', []);
             }
         } catch (e) {
             console.warn('AUTH.init error:', e);
         }
     },
-    // Stable per-tab id: sessionStorage survives refresh (same tab) but not new tabs,
-    // so each tab keeps its own session while a refresh preserves it.
-    _tid() {
-        try {
-            var k = sessionStorage.getItem('hms_t');
-            if (!k) { k = 't_' + Date.now().toString(36) + Math.random().toString(36).substr(2,6); sessionStorage.setItem('hms_t', k); }
-            return 'hms_u_' + k;
-        } catch(e) { return 'hms_u_shared'; }
-    },
     login(username, password) {
         try {
-            username = (username || '').trim();
             let users = DB.get('users');
             if (!Array.isArray(users) || users.length === 0) {
                 const admin = { ...DEFAULT_ADMIN, createdAt: new Date().toISOString() };
                 DB.set('users', [admin]);
                 users = [admin];
             }
-            const user = users.find(u => u && u.username === username && u.password === password);
+            const user = users.find(u => u.username === username && u.password === password);
             if (user) {
-                var json = JSON.stringify(user);
-                DB._write('hms_currentUser', json);
-                DB._write('hms_loginTime', JSON.stringify(new Date().toISOString()));
-                var tk = this._tid();
-                if (tk) DB._write(tk, json);
-                return { success: true, user };
+                let sid = Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+                try {
+                    localStorage.setItem('hms_currentUser', JSON.stringify(user));
+                    localStorage.setItem('hms_loginTime', new Date().toISOString());
+                    localStorage.setItem('hms_sid_' + sid, JSON.stringify(user));
+                    try { sessionStorage.setItem('hms_t', sid); } catch (e) {}
+                } catch (e) { /* storage unavailable */ }
+                return { success: true, user, sid };
             }
             return { success: false, message: 'Invalid username or password' };
         } catch (e) {
@@ -152,26 +130,33 @@ const AUTH = {
         }
     },
     logout() {
-        var tk = this._tid();
-        if (tk) DB._remove(tk);
-        DB._remove('hms_currentUser');
-        DB._remove('hms_loginTime');
-        try { sessionStorage.removeItem('hms_t'); } catch(e) {}
+        try {
+            let sid = this._sid();
+            if (sid) localStorage.removeItem('hms_sid_' + sid);
+        } catch (e) {}
+        localStorage.removeItem('hms_currentUser');
+        localStorage.removeItem('hms_loginTime');
     },
     currentUser() {
         try {
-            var tk = this._tid();
-            if (tk) {
-                var d = DB._read(tk);
+            let sid = this._sid();
+            if (sid) {
+                let d = localStorage.getItem('hms_sid_' + sid);
                 if (d) return JSON.parse(d);
             }
-            var s = DB._read('hms_currentUser');
+        } catch (e) {}
+        try {
+            let p = new URLSearchParams(window.location.search);
+            let s = p.get('sid');
             if (s) {
-                // Adopt the last global login into this tab so a refresh stays logged in.
-                if (tk) DB._write(tk, s);
-                return JSON.parse(s);
+                let d = localStorage.getItem('hms_sid_' + s);
+                if (d) return JSON.parse(d);
             }
-        } catch(e) {}
+        } catch (e) {}
+        try {
+            let d = localStorage.getItem('hms_currentUser');
+            if (d) return JSON.parse(d);
+        } catch (e) {}
         return null;
     },
     isLoggedIn() {
@@ -214,17 +199,8 @@ const AUTH = {
     },
     hasPermission(user, permission) {
         if (!user) return false;
-        var perms = Array.isArray(user.permissions) ? user.permissions : [];
-        if (user.isSuperAdmin || perms.indexOf('all') > -1) return true;
-        if (perms.indexOf(permission) > -1) return true;
-        // Inherit features granted to the user's department
-        try {
-            if (user.department && typeof getDepartmentFeatures === 'function') {
-                var deptFeatures = getDepartmentFeatures(user.department) || [];
-                if (deptFeatures.indexOf(permission) > -1) return true;
-            }
-        } catch (e) {}
-        return false;
+        if (user.isSuperAdmin || user.permissions.includes('all')) return true;
+        return user.permissions.includes(permission);
     },
     canAccess(permission) {
         const user = this.currentUser();
@@ -643,6 +619,9 @@ const APP = {
             }
             if (!Array.isArray(DB.get('suggestions')) || DB.get('suggestions').length === 0) {
                 DB.set('suggestions', []);
+            }
+            if (!Array.isArray(DB.get('reports')) || DB.get('reports').length === 0) {
+                DB.set('reports', []);
             }
             if (!Array.isArray(existingRights) || existingRights.length === 0) {
                 const defaultRights = ['dashboard','users','departments','inventory','gate-security',

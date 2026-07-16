@@ -1,73 +1,31 @@
 const Router = {
     currentModule: 'dashboard',
-    _allowed: [
-        'dashboard','users','departments','feature-rights','inventory','gate-security',
-        'phase2','projects','ambulance','problems','tasks','complaints','room-checklist',
-        'admissions','lost-found','admin-checklists','material-requests','suggestions',
-        'employee-dashboard','checklists'
-    ],
     init() {
         const user = AUTH.currentUser();
         if (!user) { window.location.href = 'index.html'; return; }
         this.renderHeader();
         this.renderSidebar();
-
-        // Restore the module from the URL hash so a refresh keeps the current tab.
-        const startModule = this._resolveStartModule(user);
-        this.navigate(startModule, true);
-
-        // React to browser back/forward and manual hash edits.
-        window.addEventListener('hashchange', () => {
-            const mod = this._moduleFromHash();
-            if (mod && mod !== APP.currentModule) this.navigate(mod, true);
-        });
-
-        const toggle = document.getElementById('menuToggle');
-        if (toggle) toggle.onclick = () => this.toggleSidebar();
-    },
-    _moduleFromHash() {
-        const raw = (window.location.hash || '').replace(/^#\/?/, '').trim();
-        return this._allowed.indexOf(raw) > -1 ? raw : null;
-    },
-    _resolveStartModule(user) {
-        const fromHash = this._moduleFromHash();
-        if (fromHash && AUTH.hasPermission(user, this._permFor(fromHash))) return fromHash;
-        return user.role === 'ambulance_employee' ? 'ambulance' : 'dashboard';
-    },
-    _permFor(module) {
-        const map = { 'feature-rights': 'departments', phase2: 'projects' };
-        return map[module] || module;
-    },
-    toggleSidebar() {
-        const sb = document.getElementById('sidebar');
-        const bd = document.getElementById('sidebarBackdrop');
-        if (!sb) return;
-        const open = sb.classList.toggle('open');
-        if (bd) bd.classList.toggle('show', open);
-    },
-    closeSidebar() {
-        const sb = document.getElementById('sidebar');
-        const bd = document.getElementById('sidebarBackdrop');
-        if (sb) sb.classList.remove('open');
-        if (bd) bd.classList.remove('show');
+        const startModule = user.role === 'ambulance_employee' ? 'ambulance' : user.role === 'employee' ? 'employee-dashboard' : 'dashboard';
+        this.navigate(startModule);
+        document.getElementById('menuToggle').onclick = () => {
+            document.getElementById('sidebar').classList.toggle('open');
+        };
     },
     renderHeader() {
         const user = AUTH.currentUser();
         const header = document.getElementById('mainHeader');
         if (!header) return;
-        const role = (user && user.role) ? String(user.role) : 'user';
-        const fullName = (user && user.fullName) ? String(user.fullName) : 'User';
         header.innerHTML = `
             <div class="header-left">
-                <button id="menuToggle" class="menu-toggle" aria-label="Menu" onclick="Router.toggleSidebar()">&#9776;</button>
+                <button id="menuToggle" class="menu-toggle">&#9776;</button>
                 <h3 id="pageTitle" style="font-size:18px;font-weight:600;">Dashboard</h3>
             </div>
             <div class="header-right">
                 <span id="liveIndicator" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:var(--success);padding:3px 8px;border-radius:12px;background:rgba(52,168,83,0.1);border:1px solid rgba(52,168,83,0.3);"><span style="width:7px;height:7px;border-radius:50%;background:var(--success);animation:pulse 1.5s infinite;"></span>LIVE</span>
-                <span class="header-role" style="font-size:13px;color:var(--gray);">${role.toUpperCase()}</span>
+                <span style="font-size:13px;color:var(--gray);">${user.role.toUpperCase()}</span>
                 <div class="header-user" onclick="Router.showProfile()">
-                    <div class="avatar">${fullName.charAt(0)}</div>
-                    <span class="header-name" style="font-size:14px;">${fullName}</span>
+                    <div class="avatar">${user.fullName.charAt(0)}</div>
+                    <span style="font-size:14px;">${user.fullName}</span>
                 </div>
                 <button class="btn btn-sm btn-danger" onclick="Router.logout()">Logout</button>
             </div>
@@ -109,27 +67,14 @@ const Router = {
         });
         nav.innerHTML = html;
     },
-    navigate(module, fromHash) {
-        const user = AUTH.currentUser();
-        if (!user) { window.location.href = 'index.html'; return; }
-        if (this._allowed.indexOf(module) === -1) module = 'dashboard';
-        // Block access to modules the user has no permission for.
-        if (!AUTH.hasPermission(user, this._permFor(module))) {
-            module = user.role === 'ambulance_employee' ? 'ambulance' : 'dashboard';
-        }
+    navigate(module) {
+        var u = AUTH.currentUser();
+        if (module === 'dashboard' && u && u.role === 'employee') module = 'employee-dashboard';
         APP.currentModule = module;
-
-        // Keep the URL hash in sync so a refresh restores this tab.
-        const desiredHash = '#/' + module;
-        if (window.location.hash !== desiredHash) {
-            try { history.replaceState(null, '', desiredHash); }
-            catch (e) { window.location.hash = desiredHash; }
-        }
-
         document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
         const navItem = document.querySelector(`.nav-item[data-module="${module}"]`);
         if (navItem) navItem.classList.add('active');
-        this.closeSidebar();
+        document.getElementById('sidebar').classList.remove('open');
         const titles = {
             dashboard: 'Dashboard', users: 'User Management', departments: 'Departments', 'feature-rights': 'Feature Rights',
             inventory: 'Inventory Management',             'gate-security': 'Gate Security',

@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>Hospital Management System</title>
-    <link rel="stylesheet" href="css/style.css?v=3">
+    <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
@@ -19,7 +19,6 @@
 </head>
 <body>
     <div class="app-layout">
-        <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="Router.closeSidebar()"></div>
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-logo" onclick="Router.navigate(AUTH.currentUser()?.role === 'employee' ? 'employee-dashboard' : 'dashboard')">
                 <span>🏥</span> HMS
