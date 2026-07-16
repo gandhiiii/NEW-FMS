@@ -116,12 +116,10 @@ const AUTH = {
             const user = users.find(u => u.username === username && u.password === password);
             if (user) {
                 let sid = Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
-                try {
-                    localStorage.setItem('hms_currentUser', JSON.stringify(user));
-                    localStorage.setItem('hms_loginTime', new Date().toISOString());
-                    localStorage.setItem('hms_sid_' + sid, JSON.stringify(user));
-                    try { sessionStorage.setItem('hms_t', sid); } catch (e) {}
-                } catch (e) { /* storage unavailable */ }
+                try { localStorage.setItem('hms_currentUser', JSON.stringify(user)); } catch (e) {}
+                try { localStorage.setItem('hms_loginTime', new Date().toISOString()); } catch (e) {}
+                try { localStorage.setItem('hms_sid_' + sid, JSON.stringify(user)); } catch (e) {}
+                try { sessionStorage.setItem('hms_t', sid); } catch (e) {}
                 return { success: true, user, sid };
             }
             return { success: false, message: 'Invalid username or password' };
