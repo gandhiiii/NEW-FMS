@@ -21,7 +21,7 @@ function renderEmployeeDashboard(container) {
         myTasks: tasks.filter(function(t) { return t.assignedTo === u || t.assignedTo === user.fullName || t.assignedTo === user.username || t.department === dept; }),
         myProblems: problems.filter(function(p) { return p.createdBy === user.username || p.createdBy === user.fullName; }),
         myRequests: requests.filter(function(r) { return r.createdBy === user.username || r.createdBy === user.fullName; }),
-        myChecklists: checklists.filter(function(cl) { return cl.assignedTo === u || cl.assignedTo === user.fullName || cl.assignedTo === user.username || cl.assignedTo === 'common' || cl.department === dept; }),
+        myChecklists: checklists,
         myProjects: projects,
         deptInventory: inventory,
         myReports: reports.filter(function(r) { return r.createdBy === user.username || r.createdBy === user.fullName; })
