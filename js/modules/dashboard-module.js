@@ -22,7 +22,9 @@ function renderDashboard(container) {
     const thisMonth = now.getMonth();
     const thisYear = now.getFullYear();
     const isThisMonth = d => { const dt = new Date(d); return dt.getMonth() === thisMonth && dt.getFullYear() === thisYear; };
+    const isToday = d => { const dt = new Date(d); return dt.toDateString() === now.toDateString(); };
 
+    const todayAdmissions = admissions.filter(a => isToday(a.createdAt || a.admissionDate)).length;
     const activeAdmissions = admissions.filter(a => a.status === 'admitted').length;
     const totalAdmitted = admissions.length;
     const monthAdmissions = admissions.filter(a => isThisMonth(a.createdAt)).length;
@@ -81,6 +83,7 @@ function renderDashboard(container) {
         <div class="stats-grid" style="grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));">
             <div class="stat-card"><div class="stat-icon">🏥</div><div class="stat-value">${activeAdmissions}</div><div class="stat-label">In-Patients</div></div>
             <div class="stat-card"><div class="stat-icon">📥</div><div class="stat-value">${monthAdmissions}</div><div class="stat-label">Admitted (Month)</div></div>
+            <div class="stat-card"><div class="stat-icon">🆕</div><div class="stat-value">${todayAdmissions}</div><div class="stat-label">Admitted Today</div></div>
             <div class="stat-card"><div class="stat-icon">📤</div><div class="stat-value">${monthDischarges}</div><div class="stat-label">Discharged (Month)</div></div>
             <div class="stat-card"><div class="stat-icon">📊</div><div class="stat-value">${avgStay.toFixed(1)}d</div><div class="stat-label">Avg Stay</div></div>
             <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-value">${completedTasks}/${totalTasks}</div><div class="stat-label">Tasks Done</div></div>
