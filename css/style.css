@@ -333,6 +333,28 @@ tr:hover td { background: var(--primary-light); }
 .emp-nav-item.active .badge { background:rgba(255,255,255,0.3); color:#fff; }
 .emp-content { flex:1; min-width:0; }
 
+/* Checklist toggle button group */
+.cl-toggle-group { display:inline-flex; gap:3px; flex-wrap:wrap; }
+.cl-toggle-btn {
+    padding:5px 10px; border:2px solid transparent; border-radius:6px;
+    font-size:11px; font-weight:700; cursor:pointer; transition:all 0.15s;
+    background:var(--bg); color:var(--gray); line-height:1; touch-action:manipulation;
+}
+.cl-toggle-btn:active { transform:scale(0.92); }
+.cl-toggle-btn.active { border-color:currentColor; box-shadow:0 0 0 1px currentColor; }
+.cl-toggle-btn[data-color="ok"] { color:#28a745; }
+.cl-toggle-btn[data-color="ok"]:hover { background:#28a74515; }
+.cl-toggle-btn[data-color="ok"].active { background:#28a745; color:#fff; }
+.cl-toggle-btn[data-color="fault"] { color:#dc3545; }
+.cl-toggle-btn[data-color="fault"]:hover { background:#dc354515; }
+.cl-toggle-btn[data-color="fault"].active { background:#dc3545; color:#fff; }
+.cl-toggle-btn[data-color="na"] { color:#6c757d; }
+.cl-toggle-btn[data-color="na"]:hover { background:#6c757d15; }
+.cl-toggle-btn[data-color="na"].active { background:#6c757d; color:#fff; }
+.cl-toggle-btn[data-color="problem"] { color:#fd7e14; }
+.cl-toggle-btn[data-color="problem"]:hover { background:#fd7e1415; }
+.cl-toggle-btn[data-color="problem"].active { background:#fd7e14; color:#fff; }
+
 /* Mobile responsive */
 @media (max-width: 768px) {
     .sidebar { transform: translateX(-100%); }
@@ -343,8 +365,9 @@ tr:hover td { background: var(--primary-light); }
     .grid-5 { grid-template-columns: repeat(2, 1fr); gap:10px; }
     .grid-6 { grid-template-columns: repeat(2, 1fr); gap:8px; }
     .search-box input { min-width: 150px; }
-    .page-content { padding: 12px; }
-    .card { padding: 12px; }
+    .page-content { padding: 10px; }
+    .card { padding: 12px; margin-bottom: 12px; }
+    .card-header { flex-direction:column; align-items:flex-start; gap:8px; }
     .stat-card { padding: 12px; }
     .stat-card .stat-value { font-size: 20px; }
     .emp-layout { flex-direction:column; }
@@ -352,14 +375,22 @@ tr:hover td { background: var(--primary-light); }
     .emp-sidebar .emp-nav-item { white-space:nowrap; border-bottom:none; border-right:1px solid var(--light-gray); padding:10px 14px; font-size:13px; background:var(--white); border-radius:0; }
     .emp-sidebar .emp-nav-item:first-child { border-radius:var(--radius) 0 0 var(--radius); }
     .emp-sidebar .emp-nav-item:last-child { border-radius:0 var(--radius) var(--radius) 0; border-right:none; }
-    th, td { padding: 6px 8px; font-size: 12px; }
-    .btn { padding: 6px 12px; font-size: 13px; }
-    .btn-sm { padding: 4px 8px; font-size: 11px; }
-    .modal-content { padding: 16px; width: 95%; max-height: 90vh; }
+    th, td { padding: 5px 6px; font-size: 11px; }
+    .btn { padding: 8px 14px; font-size: 14px; min-height:40px; }
+    .btn-sm { padding: 6px 10px; font-size: 12px; min-height:32px; }
+    .modal-content { padding: 16px; width: 96%; max-height: 85vh; margin:0 auto; border-radius:12px 12px 0 0; position:fixed; bottom:0; left:0; right:0; max-width:100%; transform:none; }
+    .modal.active { align-items:flex-end; }
     .login-card { padding: 24px; }
     .header-left h3 { font-size: 14px; }
     .header-right .badge { display:none; }
     .header-user span { display:none; }
-    .tabs { overflow-x:auto; gap:0; }
-    .tab-btn { white-space:nowrap; padding:8px 12px; font-size:13px; }
+    .header-user .avatar { width:28px; height:28px; font-size:12px; }
+    .tabs { overflow-x:auto; gap:0; flex-wrap:nowrap; }
+    .tab-btn { white-space:nowrap; padding:10px 12px; font-size:13px; min-height:40px; }
+    .form-control { font-size:16px; padding:10px 12px; min-height:44px; }
+    select.form-control { font-size:16px; }
+    .flex-between { flex-wrap:wrap; gap:8px; }
+    .stats-grid { grid-template-columns:repeat(2,1fr); gap:10px; }
+    .page-content h2 { font-size:16px; }
+    .cl-toggle-btn { padding:6px 12px; font-size:12px; min-height:36px; }
 }

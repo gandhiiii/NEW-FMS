@@ -141,17 +141,19 @@ function renderAuditList() {
                 ${items.map((item, idx) => {
                     const st = item.status || 'pending';
                     const sc = { ok: '#28a745', fault: '#dc3545', na: '#6c757d', problem: '#fd7e14', pending: '#e9ecef' };
-                    return `<div style="display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:4px;background:${st === 'pending' ? 'var(--bg)' : '#f0faf0'};font-size:13px;">
-                        <span style="display:inline-block;width:70px;text-align:center;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;color:white;background:${sc[st] || '#e9ecef'};">${(st || 'PENDING').toUpperCase()}</span>
-                        <span style="flex:1;">${item.task}</span>
+                    return `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:6px 8px;border-radius:4px;background:${st === 'pending' ? 'var(--bg)' : '#f0faf0'};font-size:13px;">
+                        <span style="flex:1;min-width:80px;">${item.task}</span>
                         ${item.notes ? '<span style="font-size:11px;color:var(--gray);">📝 ' + item.notes + '</span>' : ''}
-                        ${a.status !== 'completed' ? `<select class="form-control" style="width:auto;padding:2px 4px;font-size:12px;" onchange="updateAuditItem('${a.id}',${idx},this.value)">
-                            <option value="">Set</option>
-                            <option value="ok" ${st === 'ok' ? 'selected' : ''}>OK</option>
-                            <option value="fault" ${st === 'fault' ? 'selected' : ''}>FAULT</option>
-                            <option value="na" ${st === 'na' ? 'selected' : ''}>N/A</option>
-                            <option value="problem" ${st === 'problem' ? 'selected' : ''}>PROBLEM</option>
-                        </select>` : ''}
+                        ${a.status !== 'completed' ? `
+                            <div class="cl-toggle-group">
+                                <button class="cl-toggle-btn ${st === 'ok' ? 'active' : ''}" data-color="ok" onclick="updateAuditItem('${a.id}',${idx},'ok')">OK</button>
+                                <button class="cl-toggle-btn ${st === 'fault' ? 'active' : ''}" data-color="fault" onclick="updateAuditItem('${a.id}',${idx},'fault')">FAULT</button>
+                                <button class="cl-toggle-btn ${st === 'na' ? 'active' : ''}" data-color="na" onclick="updateAuditItem('${a.id}',${idx},'na')">N/A</button>
+                                <button class="cl-toggle-btn ${st === 'problem' ? 'active' : ''}" data-color="problem" onclick="updateAuditItem('${a.id}',${idx},'problem')">PROBLEM</button>
+                            </div>
+                        ` : `
+                            <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;color:white;background:${sc[st] || '#e9ecef'};">${(st || 'PENDING').toUpperCase()}</span>
+                        `}
                     </div>`;
                 }).join('')}
             </div>

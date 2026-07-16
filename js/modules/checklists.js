@@ -105,16 +105,16 @@ function renderClList() {
             <div style="display:flex;flex-direction:column;gap:4px;">
                 ${items.map((item, idx) => {
                     const st = item.status || 'pending';
-                    return `<div style="display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:4px;background:${st === 'pending' ? 'var(--bg)' : '#f0faf0'};font-size:13px;">
-                        <span style="display:inline-block;width:70px;text-align:center;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;color:white;background:${statusColor(st)};">${statusText(st)}</span>
-                        <span style="flex:1;">${item.task}</span>
-                        ${item.unit ? '<span style="font-size:11px;color:var(--gray);background:var(--bg);padding:1px 6px;border-radius:4px;border:1px solid #ddd;">' + item.unit + '</span>' : ''}
+                    return `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:6px 8px;border-radius:4px;background:${st === 'pending' ? 'var(--bg)' : '#f0faf0'};font-size:13px;">
+                        <span style="flex:1;min-width:80px;">${item.task}</span>
+                        ${item.unit ? '<span style="font-size:11px;color:var(--gray);background:var(--bg);padding:2px 6px;border-radius:4px;border:1px solid #ddd;">' + item.unit + '</span>' : ''}
                         ${isAssignee(c) && c.status !== 'completed' ? `
-                            <select class="form-control" style="width:auto;padding:2px 4px;font-size:12px;" onchange="updateClItemStatus('${c.id}',${idx},this.value)">
-                                <option value="">Set</option>
-                                ${CL_STATUSES.map(s => '<option value="' + s + '">' + s.toUpperCase() + '</option>').join('')}
-                            </select>
-                        ` : ''}
+                            <div class="cl-toggle-group">
+                                ${CL_STATUSES.map(s => `<button class="cl-toggle-btn ${st === s ? 'active' : ''}" data-color="${s}" onclick="updateClItemStatus('${c.id}',${idx},'${s}')">${s.toUpperCase()}</button>`).join('')}
+                            </div>
+                        ` : `
+                            <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;color:white;background:${statusColor(st)};">${statusText(st)}</span>
+                        `}
                     </div>`;
                 }).join('')}
             </div>
