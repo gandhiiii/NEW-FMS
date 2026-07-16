@@ -153,11 +153,113 @@ function dateFilter(item, from, to) {
     return true;
 }
 
+/* ─── KPI Helpers ─── */
+
+function buildOverallKPISection(ctx) {
+    const { from, to } = ctx;
+    const admissions = (DB.get('admissions') || []).filter(i => dateFilter(i, from, to));
+    const tasks = (DB.get('tasks') || []).filter(i => dateFilter(i, from, to));
+    const complaints = (DB.get('complaints') || []).filter(i => dateFilter(i, from, to));
+    const problems = (DB.get('problems') || []).filter(i => dateFilter(i, from, to));
+    const inventory = DB.get('inventory') || [];
+    const gate = (DB.get('gatesecurity') || []).filter(i => dateFilter(i, from, to));
+    const ambulance = DB.get('ambulance') || [];
+    const projects = DB.get('projects') || [];
+    const trips = (DB.get('ambulance_trips') || []).filter(i => dateFilter(i, from, to));
+    const users = DB.get('users') || [];
+    const employees = users.filter(u => !u.isSuperAdmin);
+    const checklists = (DB.get('checklists') || []).filter(i => dateFilter(i, from, to));
+
+    const completedTasks = tasks.filter(t => t.status === 'completed').length;
+    const taskRate = tasks.length > 0 ? Math.round((completedTasks / tasks.length) * 100) : 0;
+    const resolvedComplaints = complaints.filter(c => c.status === 'resolved').length;
+    const compRate = complaints.length > 0 ? Math.round((resolvedComplaints / complaints.length) * 100) : 0;
+    const resolvedProblems = problems.filter(p => p.status === 'resolved').length;
+    const probRate = problems.length > 0 ? Math.round((resolvedProblems / problems.length) * 100) : 0;
+    const activeAdmissions = admissions.filter(a => a.status === 'admitted').length;
+    const discharged = admissions.filter(a => a.status === 'discharged').length;
+    const avgStay = discharged > 0 ? Math.round(admissions.filter(a => a.status === 'discharged' && a.dischargeDate)
+        .reduce((sum, a) => sum + APP.daysBetween(a.admissionDate, a.dischargeDate), 0) / discharged) : 0;
+    const lowStock = inventory.filter(i => parseInt(i.quantity) < 10).length;
+    const totalBudget = projects.reduce((s, p) => s + (parseFloat(p.budget) || 0), 0);
+    const totalSpent = projects.reduce((s, p) => s + (parseFloat(p.spent) || 0), 0);
+    const budgetUtil = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0;
+    const totalFare = trips.reduce((s, t) => s + (parseFloat(t.fare) || 0), 0);
+    const totalKm = trips.reduce((s, t) => s + (parseFloat(t.kilometers) || 0), 0);
+    const clDone = checklists.filter(c => c.status === 'completed').length;
+    const clRate = checklists.length > 0 ? Math.round((clDone / checklists.length) * 100) : 0;
+
+    const rows = [
+        ['Total Users', users.length, ''],
+        ['Employees', employees.length, ''],
+        ['Total Departments', (DB.get('departments') || []).length, ''],
+        ['Task Completion Rate', taskRate + '%', completedTasks + '/' + tasks.length + ' completed'],
+        ['Complaint Resolution Rate', compRate + '%', resolvedComplaints + '/' + complaints.length + ' resolved'],
+        ['Problem Resolution Rate', probRate + '%', resolvedProblems + '/' + problems.length + ' resolved'],
+        ['Checklist Completion Rate', clRate + '%', clDone + '/' + checklists.length + ' completed'],
+        ['Active Admissions', activeAdmissions, ''],
+        ['Discharged Patients', discharged, ''],
+        ['Avg Stay (days)', avgStay, ''],
+        ['Low Stock Items', lowStock, '(< 10 qty)'],
+        ['Budget Utilization', budgetUtil + '%', '₹' + totalSpent + ' / ₹' + totalBudget],
+        ['Total Ambulance Trips', trips.length, totalKm + ' km'],
+        ['Total Fare Collected', '₹' + totalFare, ''],
+        ['Gate Entries', gate.length, gate.filter(g => g.status === 'approved').length + ' approved'],
+        ['Ambulances On Duty', ambulance.filter(a => a.status === 'on-duty').length, '/' + ambulance.length + ' total']
+    ].filter(r => r[1] !== 0);
+
+    return {
+        title: 'Key Performance Indicators',
+        cols: ['Metric', 'Value', 'Details'],
+        rows
+    };
+}
+
+function buildEmpKPISection(empName, ctx) {
+    const { from, to } = ctx;
+    const tasks = (DB.get('tasks') || []).filter(i => dateFilter(i, from, to) && i.assignedTo === empName);
+    const checklists = (DB.get('checklists') || []).filter(i => dateFilter(i, from, to) && i.assignedTo === empName);
+    const complaints = (DB.get('complaints') || []).filter(i => dateFilter(i, from, to) && (i.patientName === empName || i.resolvedBy === empName));
+    const problems = (DB.get('problems') || []).filter(i => dateFilter(i, from, to) && i.createdBy === empName);
+    const requests = (DB.get('material_requests') || []).filter(i => dateFilter(i, from, to) && i.requestedBy === empName);
+    const suggestions = (DB.get('suggestions') || []).filter(i => dateFilter(i, from, to) && i.createdBy === empName);
+
+    const done = t => t.status === 'completed' || t.status === 'resolved';
+    const tDone = tasks.filter(done).length;
+    const tRate = tasks.length > 0 ? Math.round((tDone / tasks.length) * 100) : 0;
+    const clDone = checklists.filter(done).length;
+    const clRate = checklists.length > 0 ? Math.round((clDone / checklists.length) * 100) : 0;
+    const cDone = complaints.filter(done).length;
+    const cRate = complaints.length > 0 ? Math.round((cDone / complaints.length) * 100) : 0;
+    const pDone = problems.filter(done).length;
+    const pRate = problems.length > 0 ? Math.round((pDone / problems.length) * 100) : 0;
+    const rApproved = requests.filter(r => r.status === 'approved').length;
+    const rRate = requests.length > 0 ? Math.round((rApproved / requests.length) * 100) : 0;
+
+    const rows = [
+        ['Tasks', tDone + '/' + tasks.length, tRate + '%'],
+        ['Checklists', clDone + '/' + checklists.length, clRate + '%'],
+        ['Complaints', cDone + '/' + complaints.length, cRate + '%'],
+        ['Problems Solved', pDone + '/' + problems.length, pRate + '%'],
+        ['Material Requests Approved', rApproved + '/' + requests.length, rRate + '%'],
+        ['Suggestions', suggestions.length, '']
+    ].filter(r => parseInt(r[1].split('/')[1] || r[1]) > 0);
+
+    return rows.length > 0 ? {
+        title: empName + ' — KPIs',
+        cols: ['Category', 'Done/Total', 'Rate'],
+        rows
+    } : null;
+}
+
 /* ─── Overall Report ─── */
 
 function buildOverallReport(ctx) {
     const { from, to } = ctx;
     const sections = [];
+
+    const kpiSection = buildOverallKPISection(ctx);
+    if (kpiSection) sections.push(kpiSection);
 
     REPORT_CATEGORIES.forEach(cat => {
         const items = (DB.get(REPORT_COLLECTIONS[cat.id]) || []).filter(i => dateFilter(i, from, to));
@@ -232,33 +334,12 @@ function buildIndividualReport(ctx) {
         let totalItems = 0;
         const detail = [];
 
-        REPORT_CATEGORIES.forEach(cat => {
-            let items = (DB.get(REPORT_COLLECTIONS[cat.id]) || []).filter(i => dateFilter(i, from, to));
-            if (cat.id === 'users') return;
-            if (['tasks', 'checklists'].includes(cat.id)) {
-                items = items.filter(i => i.assignedTo === empName);
-            } else if (cat.id === 'complaints') {
-                items = items.filter(i => i.patientName === empName || i.resolvedBy === empName);
-            } else if (cat.id === 'material_requests') {
-                items = items.filter(i => i.requestedBy === empName);
-            } else if (cat.id === 'suggestions') {
-                items = items.filter(i => i.createdBy === empName);
-            } else {
-                items = [];
-            }
-            if (items.length > 0) {
-                const done = items.filter(i => i.status === 'completed' || i.status === 'resolved').length;
-                totalItems += items.length;
-                detail.push({ category: cat.label, count: items.length, done });
-            }
-        });
-
-        if (detail.length > 0) {
+        const kpiSec = buildEmpKPISection(empName, ctx);
+        if (kpiSec) {
             sections.push({
                 title: empName + ' (' + (e.role || '').replace('_', ' ') + ')',
-                total: totalItems,
-                detail,
-                role: e.role
+                type: 'individual',
+                kpiSection: kpiSec
             });
         }
     });
@@ -386,15 +467,18 @@ function renderDeptResult(container, ctx) {
 
 function renderIndivResult(container, ctx) {
     const { sections } = ctx;
-    let html = '<div class="card" style="margin-top:16px;"><div class="card-header"><h3>Individual Employee Summary</h3></div>';
-    html += '<div class="table-responsive"><table><thead><tr><th>Employee</th><th>Total Records</th><th>Breakdown</th></tr></thead><tbody>';
-    let grandTotal = 0;
+    let html = '';
     sections.forEach(sec => {
-        grandTotal += sec.total;
-        html += '<tr><td><strong>' + sec.title + '</strong></td><td>' + sec.total + '</td><td style="font-size:12px;">' + sec.detail.map(d => d.category + ': ' + d.done + '/' + d.count).join(' | ') + '</td></tr>';
+        html += '<div class="card" style="margin-top:16px;">';
+        html += '<div class="card-header"><h3>' + sec.title + '</h3></div>';
+        if (sec.kpiSection) {
+            html += '<div class="table-responsive"><table><thead><tr>' + sec.kpiSection.cols.map(c => '<th>' + c + '</th>').join('') + '</tr></thead>';
+            html += '<tbody>' + sec.kpiSection.rows.map(r => '<tr>' + r.map(c => '<td>' + c + '</td>').join('') + '</tr>').join('') + '</tbody>';
+            html += '</table></div>';
+        }
+        html += '</div>';
     });
-    html += '<tr style="background:var(--bg);font-weight:600;"><td>Total</td><td>' + grandTotal + '</td><td></td></tr>';
-    html += '</tbody></table></div></div>';
+    if (!html) html = '<div class="empty-state" style="margin-top:16px;">No data found for the selected filters</div>';
     container.innerHTML = html;
 }
 
@@ -411,10 +495,15 @@ function exportCSV() {
     sections.forEach(sec => {
         if (sec.empty) return;
         csv += '"' + sec.title + '"\r\n';
-        if (type === 'department' || type === 'individual') {
+        if (type === 'department') {
             csv += '"Category","Count","Done"\r\n';
             sec.detail.forEach(d => {
                 csv += '"' + d.category + '",' + (d.count || 0) + ',' + (d.done || 0) + '\r\n';
+            });
+        } else if (type === 'individual' && sec.kpiSection) {
+            csv += sec.kpiSection.cols.map(c => '"' + c + '"').join(',') + '\r\n';
+            sec.kpiSection.rows.forEach(r => {
+                csv += r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',') + '\r\n';
             });
         } else {
             csv += sec.cols.map(c => '"' + c + '"').join(',') + '\r\n';
@@ -462,11 +551,17 @@ function printReport() {
             html += '<h2>' + sec.title + ' (No data)</h2>';
             return;
         }
-        html += '<h2>' + sec.title + ' (' + sec.total + ' records)</h2>';
-        if (type === 'department' || type === 'individual') {
-            html += '<table><thead><tr><th>Category</th><th>Count</th>' + (type === 'individual' ? '<th>Done</th>' : '') + '</tr></thead><tbody>';
+        html += '<h2>' + sec.title + '</h2>';
+        if (type === 'department') {
+            html += '<table><thead><tr><th>Category</th><th>Count</th><th>Done</th></tr></thead><tbody>';
             sec.detail.forEach(d => {
-                html += '<tr><td>' + d.category + '</td><td>' + (d.count || 0) + '</td>' + (type === 'individual' ? '<td>' + (d.done || 0) + '</td>' : '') + '</tr>';
+                html += '<tr><td>' + d.category + '</td><td>' + (d.count || 0) + '</td><td>' + (d.done || 0) + '</td></tr>';
+            });
+            html += '</tbody></table>';
+        } else if (type === 'individual' && sec.kpiSection) {
+            html += '<table><thead><tr>' + sec.kpiSection.cols.map(c => '<th>' + c + '</th>').join('') + '</tr></thead><tbody>';
+            sec.kpiSection.rows.forEach(r => {
+                html += '<tr>' + r.map(c => '<td>' + c + '</td>').join('') + '</tr>';
             });
             html += '</tbody></table>';
         } else {
