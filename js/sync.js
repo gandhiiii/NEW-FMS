@@ -17,9 +17,10 @@ const SYNC = {
             this._db = firebase.firestore();
             await this._db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
             this._patchDB();
+            this._ready = true;
             await this._syncFromServer();
             this._listen();
-            this._ready = true;
+            if (APP && APP.refreshCurrent) APP.refreshCurrent();
             console.log('Firebase sync ready');
         } catch (e) {
             console.warn('Firebase init error:', e);
