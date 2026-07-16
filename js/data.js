@@ -519,9 +519,51 @@ const APP = {
                 if (_sgClean.length !== _sg.length) DB.set('suggestions', _sgClean);
             } catch (_e) {}
             APP_SYNC.init();
+            this._startDailyReset();
         } catch (e) {
             console.warn('APP.init error:', e);
         }
+    },
+
+    _todayStr() {
+        return new Date().toISOString().split('T')[0];
+    },
+
+    _startDailyReset() {
+        const check = () => {
+            try {
+                const now = new Date();
+                if (now.getHours() < 5) return;
+                const last = localStorage.getItem('hms_lastClReset');
+                const today = this._todayStr();
+                if (last === today) return;
+                this._runDailyReset();
+                localStorage.setItem('hms_lastClReset', today);
+            } catch (e) {
+                console.warn('Daily reset check error:', e);
+            }
+        };
+        check();
+        setInterval(check, 60000);
+    },
+
+    _runDailyReset() {
+        const lists = DB.get('checklists');
+        if (!lists || lists.length === 0) return;
+        let count = 0;
+        lists.forEach(cl => {
+            const items = (cl.items || []).map(item => ({
+                ...item,
+                status: 'pending',
+                value: '',
+                updatedAt: '',
+                updatedBy: ''
+            }));
+            DB.update('checklists', cl.id, { items, status: 'active', completedAt: '' });
+            count++;
+        });
+        console.log('Daily reset: ' + count + ' checklists reset');
+        if (count > 0 && APP) APP.notify('Checklists reset for new day', 'info');
     },
     refreshCurrent() {
         const mod = this.currentModule;
