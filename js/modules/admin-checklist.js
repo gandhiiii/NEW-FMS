@@ -326,6 +326,17 @@ function updateAuditItem(id, idx, value) {
 
 /* ─── Tab 3: All Checklists Oversight ─── */
 
+function adminResetAllChecklists() {
+    confirmAction('Reset ALL employee checklists to pending? This clears all item statuses and re-opens completed checklists.', () => {
+        APP._runDailyReset();
+        if (SYNC._ready) {
+            SYNC._db.collection('_meta').doc('dailyClReset').set({ date: APP._todayStr(), updatedAt: new Date().toISOString() }).catch(() => {});
+        }
+        APP.notify('All checklists have been reset', 'success');
+        renderAdmOversight();
+    });
+}
+
 function renderAdmOversight() {
     const content = document.getElementById('admContent');
     if (!content) return;
@@ -333,7 +344,9 @@ function renderAdmOversight() {
     const users = DB.get('users');
     content.innerHTML = `
         <div class="card">
-            <div class="card-header"><h3>👁️ All Employee Checklists (${allChecklists.length} total)</h3></div>
+            <div class="card-header flex-between"><h3>👁️ All Employee Checklists (${allChecklists.length} total)</h3>
+                <button class="btn btn-sm btn-danger" onclick="adminResetAllChecklists()">🔄 Reset All</button>
+            </div>
             <div class="table-responsive">
                 <table>
                     <thead><tr><th>Title</th><th>Assigned To</th><th>Assigned By</th><th>Floor</th><th>Progress</th><th>Status</th><th>Due</th><th>Action</th></tr></thead>
