@@ -55,8 +55,24 @@ function renderTaskList() {
 
     const tbody = document.getElementById('taskTableBody');
     if (!tbody) return;
-    tbody.innerHTML = filtered.slice().reverse().map(t => `
-        <tr>
+    const isAdmin = user.role === 'admin' || user.isSuperAdmin;
+    tbody.innerHTML = filtered.slice().reverse().map(t => {
+        let actions = '';
+        if (isAdmin) {
+            actions = `
+                <button class="btn btn-sm btn-primary" onclick="editTask('${t.id}')">Edit</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteTask('${t.id}')">Del</button>
+            `;
+        } else if (t.assignedTo === user.fullName) {
+            if (t.status === 'pending') {
+                actions = `<button class="btn btn-sm btn-success" onclick="startTask('${t.id}')">▶ Start</button>`;
+            } else if (t.status === 'in-progress') {
+                actions = `<button class="btn btn-sm btn-success" onclick="completeTask('${t.id}')">✓ Complete</button>`;
+            } else {
+                actions = `<span style="font-size:12px;color:var(--gray);">Done</span>`;
+            }
+        }
+        return `<tr>
             <td><strong>${t.title}</strong></td>
             <td>${t.assignedTo}</td>
             <td>${t.department || '-'}</td>
@@ -65,13 +81,9 @@ function renderTaskList() {
             </td>
             <td><span class="badge ${t.priority === 'high' ? 'badge-danger' : t.priority === 'medium' ? 'badge-warning' : 'badge-info'}">${t.priority}</span></td>
             <td><span class="badge ${APP.getStatusBadge(t.status)}">${t.status}</span></td>
-            <td>
-                <button class="btn btn-sm btn-primary" onclick="editTask('${t.id}')">Edit</button>
-                <button class="btn btn-sm btn-success" onclick="updateTaskStatus('${t.id}')">Next</button>
-                <button class="btn btn-sm btn-danger" onclick="deleteTask('${t.id}')">Del</button>
-            </td>
-        </tr>
-    `).join('') || '<tr><td colspan="7" class="empty-state">No tasks assigned</td></tr>';
+            <td>${actions}</td>
+        </tr>`;
+    }).join('') || '<tr><td colspan="7" class="empty-state">No tasks assigned</td></tr>';
 }
 
 function showTaskForm(task) {
@@ -165,12 +177,20 @@ function deleteTask(id) {
     });
 }
 
-function updateTaskStatus(id) {
+function startTask(id) {
     const task = DB.getById('tasks', id);
-    if (!task) return;
-    const statusFlow = { 'pending': 'in-progress', 'in-progress': 'completed', 'completed': 'pending' };
-    const newStatus = statusFlow[task.status] || 'pending';
-    DB.update('tasks', id, { status: newStatus });
-    APP.notify(`Task status: ${newStatus}`, 'info');
+    if (!task || task.status !== 'pending') return;
+    DB.update('tasks', id, { status: 'in-progress', startedAt: new Date().toISOString() });
+    APP.notify('Task started — In Progress', 'info');
     renderTaskList();
+}
+
+function completeTask(id) {
+    const task = DB.getById('tasks', id);
+    if (!task || task.status !== 'in-progress') return;
+    confirmAction('Mark this task as completed?', () => {
+        DB.update('tasks', id, { status: 'completed', completedAt: new Date().toISOString() });
+        APP.notify('Task completed', 'success');
+        renderTaskList();
+    });
 }
