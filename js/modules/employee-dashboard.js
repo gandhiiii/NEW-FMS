@@ -18,13 +18,13 @@ function renderEmployeeDashboard(container) {
     var u = user.fullName || user.username;
     _empData = {
         user: user, dept: dept,
-        myTasks: tasks.filter(function(t) { return t.assignedTo === u || t.assignedTo === user.username; }),
-        myProblems: problems.filter(function(p) { return p.createdBy === user.username; }),
-        myRequests: requests.filter(function(r) { return r.createdBy === user.username; }),
-        myChecklists: checklists.filter(function(cl) { return cl.assignedTo === u || cl.assignedTo === user.username || cl.assignedTo === 'common'; }),
-        myProjects: projects.filter(function(p) { return p.assignedTo === u || p.assignedTo === user.username; }),
-        deptInventory: inventory.filter(function(i) { return i.department === dept; }),
-        myReports: reports.filter(function(r) { return r.createdBy === user.username; })
+        myTasks: tasks.filter(function(t) { return t.assignedTo === u || t.assignedTo === user.fullName || t.assignedTo === user.username || t.department === dept; }),
+        myProblems: problems.filter(function(p) { return p.createdBy === user.username || p.createdBy === user.fullName; }),
+        myRequests: requests.filter(function(r) { return r.createdBy === user.username || r.createdBy === user.fullName; }),
+        myChecklists: checklists.filter(function(cl) { return cl.assignedTo === u || cl.assignedTo === user.fullName || cl.assignedTo === user.username || cl.assignedTo === 'common' || cl.department === dept; }),
+        myProjects: projects,
+        deptInventory: inventory,
+        myReports: reports.filter(function(r) { return r.createdBy === user.username || r.createdBy === user.fullName; })
     };
 
     container.innerHTML = ''
@@ -39,7 +39,7 @@ function renderEmployeeDashboard(container) {
         + '<div class="emp-nav-item" onclick="empNav(\'problems\',this)" data-sec="problems" style="padding:12px 16px;cursor:pointer;border-bottom:1px solid var(--border);font-size:14px;display:flex;align-items:center;gap:8px;transition:0.2s;">🔧 Problems <span class="badge badge-danger" style="margin-left:auto;font-size:10px;">' + _empData.myProblems.filter(function(p){return p.status!=='resolved';}).length + '</span></div>'
         + '<div class="emp-nav-item" onclick="empNav(\'checklists\',this)" data-sec="checklists" style="padding:12px 16px;cursor:pointer;border-bottom:1px solid var(--border);font-size:14px;display:flex;align-items:center;gap:8px;transition:0.2s;">✅ Checklists</div>'
         + '<div class="emp-nav-item" onclick="empNav(\'requests\',this)" data-sec="requests" style="padding:12px 16px;cursor:pointer;border-bottom:1px solid var(--border);font-size:14px;display:flex;align-items:center;gap:8px;transition:0.2s;">📦 Materials <span class="badge badge-warning" style="margin-left:auto;font-size:10px;">' + _empData.myRequests.filter(function(r){return r.status==='pending';}).length + '</span></div>'
-        + '<div class="emp-nav-item" onclick="empNav(\'lifecycle\',this)" data-sec="lifecycle" style="padding:12px 16px;cursor:pointer;border-bottom:1px solid var(--border);font-size:14px;display:flex;align-items:center;gap:8px;transition:0.2s;">🔋 Lifecycle</div>'
+        + '<div class="emp-nav-item" onclick="empNav(\'lifecycle\',this)" data-sec="lifecycle" style="padding:12px 16px;cursor:pointer;border-bottom:1px solid var(--border);font-size:14px;display:flex;align-items:center;gap:8px;transition:0.2s;">🔋 Lifecycle <span class="badge badge-info" style="margin-left:auto;font-size:10px;">' + _empData.deptInventory.length + '</span></div>'
         + '<div class="emp-nav-item" onclick="empNav(\'projects\',this)" data-sec="projects" style="padding:12px 16px;cursor:pointer;border-bottom:1px solid var(--border);font-size:14px;display:flex;align-items:center;gap:8px;transition:0.2s;">📋 Projects <span class="badge badge-primary" style="margin-left:auto;font-size:10px;">' + _empData.myProjects.length + '</span></div>'
         + '<div class="emp-nav-item" onclick="empNav(\'reports\',this)" data-sec="reports" style="padding:12px 16px;cursor:pointer;border-bottom:1px solid var(--border);font-size:14px;display:flex;align-items:center;gap:8px;transition:0.2s;">📋 Reports</div>'
         + '<div class="emp-nav-item" onclick="empNav(\'performance\',this)" data-sec="performance" style="padding:12px 16px;cursor:pointer;font-size:14px;display:flex;align-items:center;gap:8px;transition:0.2s;">📊 Performance</div>'
@@ -312,8 +312,8 @@ function renderEmpLifecycleSec() {
     var el = document.getElementById('empSectionLifecycle');
     if (!el) return;
     var d = _empData;
-    var html = '<div class="card"><div class="card-header"><h3>🔋 Maintenance Product Lifecycle</h3></div><div style="padding:16px;">';
-    if (d.deptInventory.length === 0) { html += '<div style="color:var(--gray);font-size:13px;">No inventory items in your department</div>'; }
+    var html = '<div class="card"><div class="card-header"><h3>🔋 Product Lifecycle</h3></div><div style="padding:16px;">';
+    if (d.deptInventory.length === 0) { html += '<div style="color:var(--gray);font-size:13px;">No inventory items found</div>'; }
     else {
         var now = new Date();
         html += '<div class="table-responsive"><table class="table"><thead><tr><th>Item</th><th>Category</th><th>Qty</th><th>Expiry</th><th>Warranty</th><th>Lifecycle</th></tr></thead><tbody>';
