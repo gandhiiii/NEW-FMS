@@ -10,9 +10,31 @@ const SYNC = {
         return this._initPromise;
     },
 
+    _status(msg, type) {
+        const el = document.getElementById('liveIndicator');
+        if (!el) return;
+        if (type === 'error') {
+            el.innerHTML = '<span style="color:var(--danger)">&#9679; SYNC ERR</span>';
+            el.style.background = 'rgba(234,67,53,0.1)';
+            el.style.borderColor = 'var(--danger)';
+        } else if (type === 'ok') {
+            el.innerHTML = '<span style="width:7px;height:7px;border-radius:50%;background:var(--success);display:inline-block;animation:pulse 1.5s infinite;"></span> SYNC';
+            el.style.background = 'rgba(52,168,83,0.1)';
+            el.style.borderColor = 'rgba(52,168,83,0.3)';
+        } else {
+            el.innerHTML = '<span style="width:7px;height:7px;border-radius:50%;background:#fbbc04;display:inline-block;"></span> SYNC...';
+            el.style.background = 'rgba(251,188,4,0.1)';
+            el.style.borderColor = '#fbbc04';
+        }
+    },
+
     async _init() {
         try {
-            if (typeof firebase === 'undefined') { console.warn('Firebase SDK not loaded'); return; }
+            if (typeof firebase === 'undefined') {
+                this._status('SDK missing', 'error');
+                return;
+            }
+            this._status('Connecting...', 'busy');
             firebase.initializeApp(FIREBASE_CONFIG);
             this._db = firebase.firestore();
             await this._db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
@@ -20,9 +42,11 @@ const SYNC = {
             this._ready = true;
             await this._syncFromServer();
             this._listen();
+            this._status('Connected', 'ok');
             if (APP && APP.refreshCurrent) APP.refreshCurrent();
-            console.log('Firebase sync ready');
+            this._startPolling();
         } catch (e) {
+            this._status('Init: ' + (e.message || e), 'error');
             console.warn('Firebase init error:', e);
         }
     },
@@ -72,7 +96,8 @@ const SYNC = {
                 });
             }
         } catch (e) {
-            console.warn('Firebase syncFromServer error:', e);
+            this._status('Sync: ' + (e.message || e), 'error');
+            console.warn('Firebase sync error:', e);
         }
     },
 
@@ -88,15 +113,7 @@ const SYNC = {
                             const localRaw = localStorage.getItem('hms_' + key);
                             if (localRaw !== serverStr) {
                                 localStorage.setItem('hms_' + key, serverStr);
-                                const el = document.getElementById('liveIndicator');
-                                if (el) {
-                                    el.style.background = 'rgba(66,133,244,0.2)';
-                                    el.style.borderColor = 'var(--info)';
-                                    setTimeout(() => {
-                                        el.style.background = 'rgba(52,168,83,0.1)';
-                                        el.style.borderColor = 'rgba(52,168,83,0.3)';
-                                    }, 400);
-                                }
+                                this._flash();
                                 if (APP && APP.refreshCurrent) {
                                     clearTimeout(SYNC._debounce);
                                     SYNC._debounce = setTimeout(() => APP.refreshCurrent(), 200);
@@ -106,6 +123,50 @@ const SYNC = {
                     }
                 }
             });
+        }, err => {
+            this._status('Listener: ' + (err.message || err), 'error');
+            console.warn('Firebase listener error:', err);
         });
+    },
+
+    _flash() {
+        const el = document.getElementById('liveIndicator');
+        if (el) {
+            el.style.background = 'rgba(66,133,244,0.2)';
+            el.style.borderColor = 'var(--info)';
+            el.innerHTML = '<span style="width:7px;height:7px;border-radius:50%;background:var(--info);display:inline-block;animation:pulse 0.5s infinite;"></span> SYNCED';
+            setTimeout(() => {
+                el.style.background = 'rgba(52,168,83,0.1)';
+                el.style.borderColor = 'rgba(52,168,83,0.3)';
+                el.innerHTML = '<span style="width:7px;height:7px;border-radius:50%;background:var(--success);display:inline-block;animation:pulse 1.5s infinite;"></span> SYNC';
+            }, 1500);
+        }
+    },
+
+    _startPolling() {
+        setInterval(() => {
+            if (!this._ready) return;
+            this._db.collection('hms_data').get().then(snapshot => {
+                let changed = false;
+                snapshot.forEach(doc => {
+                    const d = doc.data();
+                    if (d && d.items) {
+                        const key = doc.id;
+                        try {
+                            const serverStr = JSON.stringify(d.items);
+                            const localRaw = localStorage.getItem('hms_' + key);
+                            if (localRaw !== serverStr) {
+                                localStorage.setItem('hms_' + key, serverStr);
+                                changed = true;
+                            }
+                        } catch (e) { }
+                    }
+                });
+                if (changed) {
+                    this._flash();
+                    if (APP && APP.refreshCurrent) APP.refreshCurrent();
+                }
+            }).catch(() => {});
+        }, 15000);
     }
 };
