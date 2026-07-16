@@ -44,20 +44,27 @@ function renderClList() {
     const user = AUTH.currentUser();
     const allChecklists = DB.get('checklists');
     const search = (document.getElementById('clSearch')?.value || '').toLowerCase();
-    let filtered = allChecklists;
+
+    let scopeFiltered = allChecklists.filter(c => {
+        if (user.role === 'admin' || user.isSuperAdmin) return true;
+        if (user.role === 'hod') return c.department === user.department || c.assignedBy === user.fullName;
+        return c.assignedTo === user.fullName || c.assignedTo === 'common';
+    });
+
+    let filtered = scopeFiltered;
     if (clFilter === 'my') {
         if (user.role === 'admin' || user.isSuperAdmin) {
-            filtered = allChecklists.filter(c => c.assignedBy === user.fullName);
+            filtered = scopeFiltered.filter(c => c.assignedBy === user.fullName);
         } else {
-            filtered = allChecklists.filter(c => c.assignedTo === user.fullName);
+            filtered = scopeFiltered.filter(c => c.assignedTo === user.fullName);
         }
     } else if (clFilter === 'common') {
-        filtered = allChecklists.filter(c => c.assignedTo === 'common');
+        filtered = scopeFiltered.filter(c => c.assignedTo === 'common');
     } else if (clFilter === 'completed') {
-        filtered = allChecklists.filter(c => c.status === 'completed');
+        filtered = scopeFiltered.filter(c => c.status === 'completed');
     }
     if (search) {
-        filtered = filtered.filter(c => c.title.toLowerCase().includes(search) || c.assignedTo.toLowerCase().includes(search));
+        filtered = filtered.filter(c => c.title.toLowerCase().includes(search) || (c.assignedTo || '').toLowerCase().includes(search));
     }
     const grid = document.getElementById('clGrid');
     if (!grid) return;
@@ -123,10 +130,15 @@ function renderClList() {
 
 function showClForm(cl) {
     const user = AUTH.currentUser();
-    const users = DB.get('users').filter(u => !u.isSuperAdmin);
+    let users = DB.get('users').filter(u => !u.isSuperAdmin);
     const floors = DB.get('floorItems');
     const existingItems = cl?.items || [];
     const isEdit = !!cl;
+    if (user.role === 'hod') {
+        users = users.filter(u => u.department === user.department && u.role !== 'admin');
+        if (cl) users = users.concat(DB.get('users').filter(u => u.fullName === cl.assignedTo));
+    }
+    const depts = DB.get('departments');
     const form = `
         <form id="clForm">
             <input type="hidden" name="id" value="${cl?.id || ''}">
@@ -134,6 +146,13 @@ function showClForm(cl) {
                 <div class="form-group">
                     <label>Checklist Title *</label>
                     <input type="text" name="title" class="form-control" value="${cl?.title || ''}" required placeholder="e.g. Morning Round">
+                </div>
+                <div class="form-group" ${user.role === 'hod' ? 'style="display:none;"' : ''}>
+                    <label>Department</label>
+                    <select name="department" class="form-control">
+                        <option value="">All Departments</option>
+                        ${depts.map(d => '<option value="' + d.name + '" ' + (cl?.department === d.name || (user.role === 'hod' && d.name === user.department) ? 'selected' : '') + '>' + d.name + '</option>').join('')}
+                    </select>
                 </div>
                 <div class="form-group">
                     <label>Assign To *</label>
@@ -241,6 +260,7 @@ function saveCl() {
     const deadline = form.querySelector('[name="deadline"]')?.value;
     const status = form.querySelector('[name="status"]')?.value || 'active';
     const description = form.querySelector('[name="description"]')?.value;
+    const department = form.querySelector('[name="department"]')?.value || user.department || '';
     if (!title || !assignedTo) { APP.notify('Title and assignment required', 'error'); return; }
     const items = [];
     const rows = form.querySelectorAll('.cl-item-row');
@@ -257,12 +277,12 @@ function saveCl() {
         items.forEach(item => {
             if (statusMap[item.task] !== undefined) item.status = statusMap[item.task];
         });
-        DB.update('checklists', id, { title, assignedTo, floor, deadline, description, items, status });
+        DB.update('checklists', id, { title, assignedTo, floor, deadline, description, items, status, department });
         APP.notify('Checklist updated', 'success');
     } else {
         DB.add('checklists', {
             title, assignedTo, floor: floor || '', deadline: deadline || '', description: description || '',
-            items, status: 'active', assignedBy: user.fullName
+            department, items, status: 'active', assignedBy: user.fullName
         });
         APP.notify('Checklist created and assigned', 'success');
     }

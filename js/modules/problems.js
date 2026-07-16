@@ -39,12 +39,18 @@ function switchProbTab(filter, btn) {
 }
 
 function renderProbList() {
+    const user = AUTH.currentUser();
     const problems = DB.get('problems');
     const search = (document.getElementById('probSearch')?.value || '').toLowerCase();
-    let filtered = problems.filter(p =>
+    let filtered = problems.filter(p => {
+        if (user.role === 'admin') return true;
+        if (user.role === 'hod') return p.department === user.department;
+        return p.createdBy === user.username;
+    });
+    filtered = filtered.filter(p =>
         p.title.toLowerCase().includes(search) ||
         p.category.toLowerCase().includes(search) ||
-        p.reportedBy.toLowerCase().includes(search)
+        (p.reportedBy || '').toLowerCase().includes(search)
     );
     if (probFilter !== 'all') filtered = filtered.filter(p => p.status === probFilter);
 
@@ -120,11 +126,15 @@ function showProbForm() {
 }
 
 function saveProb() {
+    const user = AUTH.currentUser();
     const data = getFormData('probForm');
     if (!data.title || !data.category || !data.reportedBy || !data.description) {
         APP.notify('Please fill required fields', 'error'); return;
     }
     data.status = 'open';
+    data.createdBy = user.username;
+    data.createdByName = user.fullName;
+    data.department = data.department || user.department || '';
     data.solution = '';
     data.resolvedBy = '';
     data.resolvedAt = '';

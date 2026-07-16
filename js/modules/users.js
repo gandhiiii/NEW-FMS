@@ -204,8 +204,18 @@ function onRoleChange(select) {
     const grid = document.getElementById('permissionsGrid');
     if (!grid) return;
     const allCbs = document.querySelectorAll('[name="permissions"]');
-    if (role === 'ambulance_employee') {
-        allCbs.forEach(cb => cb.checked = cb.value === 'ambulance');
+    const rolePerms = {
+        hod: ['dashboard','employee-dashboard','material-requests','suggestions','tasks','checklists','complaints','problems'],
+        employee: ['employee-dashboard','material-requests','suggestions'],
+        storekeeper: ['dashboard','inventory','material-requests','employee-dashboard'],
+        ambulance_employee: ['ambulance']
+    };
+    const perms = rolePerms[role];
+    if (perms) {
+        allCbs.forEach(cb => cb.checked = perms.indexOf(cb.value) > -1);
+    }
+    if (!rolePerms[role]) {
+        allCbs.forEach(cb => cb.checked = false);
     }
 }
 

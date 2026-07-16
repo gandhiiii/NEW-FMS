@@ -39,11 +39,17 @@ function switchTaskTab(filter, btn) {
 }
 
 function renderTaskList() {
+    const user = AUTH.currentUser();
     const tasks = DB.get('tasks');
     const search = (document.getElementById('taskSearch')?.value || '').toLowerCase();
-    let filtered = tasks.filter(t =>
+    let filtered = tasks.filter(t => {
+        if (user.role === 'admin') return true;
+        if (user.role === 'hod') return t.department === user.department;
+        return t.assignedTo === user.fullName;
+    });
+    filtered = filtered.filter(t =>
         t.title.toLowerCase().includes(search) ||
-        t.assignedTo.toLowerCase().includes(search)
+        (t.assignedTo || '').toLowerCase().includes(search)
     );
     if (taskFilter !== 'all') filtered = filtered.filter(t => t.status === taskFilter);
 
@@ -69,8 +75,14 @@ function renderTaskList() {
 }
 
 function showTaskForm(task) {
+    const user = AUTH.currentUser();
     const users = DB.get('users');
     const depts = DB.get('departments');
+    let assignableUsers = users.filter(u => u.role !== 'admin');
+    if (user.role === 'hod') {
+        assignableUsers = assignableUsers.filter(u => u.department === user.department && u.role !== 'admin');
+        if (task) assignableUsers = assignableUsers.concat(users.filter(u => u.fullName === task.assignedTo));
+    }
     const form = `
         <form id="taskForm">
             <input type="hidden" name="id" value="${task?.id || ''}">
@@ -83,7 +95,7 @@ function showTaskForm(task) {
                     <label>Assigned To *</label>
                     <select name="assignedTo" class="form-control" required>
                         <option value="">Select Employee</option>
-                        ${users.filter(u => u.role !== 'admin').map(u =>
+                        ${assignableUsers.map(u =>
                             `<option value="${u.fullName}" ${task?.assignedTo === u.fullName ? 'selected' : ''}>${u.fullName} (${u.role})</option>`
                         ).join('')}
                     </select>

@@ -516,6 +516,16 @@ const APP = {
                 var _clean = _users.filter(function(_u) { return _u && typeof _u === 'object' && typeof _u.fullName === 'string' && typeof _u.username === 'string'; });
                 if (_clean.length !== _users.length) DB.set('users', _clean);
             } catch (_e) {}
+            try {
+                var _mr = DB.get('material_requests') || [];
+                var _mrClean = _mr.filter(function(_r) { return _r && typeof _r === 'object' && typeof _r.title === 'string'; });
+                if (_mrClean.length !== _mr.length) DB.set('material_requests', _mrClean);
+            } catch (_e) {}
+            try {
+                var _sg = DB.get('suggestions') || [];
+                var _sgClean = _sg.filter(function(_s) { return _s && typeof _s === 'object' && typeof _s.title === 'string'; });
+                if (_sgClean.length !== _sg.length) DB.set('suggestions', _sgClean);
+            } catch (_e) {}
             APP_SYNC.init();
         } catch (e) {
             console.warn('APP.init error:', e);
@@ -543,7 +553,10 @@ const APP = {
             admissions: renderAdmissions,
             'lost-found': renderLostFound,
             'admin-checklists': renderAdminChecklists,
-            checklists: renderChecklists
+            checklists: renderChecklists,
+            'material-requests': renderMaterialRequests,
+            suggestions: renderSuggestions,
+            'employee-dashboard': renderEmployeeDashboard
         };
         if (renderers[mod]) {
             renderers[mod](content);
@@ -564,10 +577,17 @@ const APP = {
             if (!Array.isArray(DB.get('inventory_receipts')) || DB.get('inventory_receipts').length === 0) {
                 DB.set('inventory_receipts', []);
             }
+            if (!Array.isArray(DB.get('material_requests')) || DB.get('material_requests').length === 0) {
+                DB.set('material_requests', []);
+            }
+            if (!Array.isArray(DB.get('suggestions')) || DB.get('suggestions').length === 0) {
+                DB.set('suggestions', []);
+            }
             if (!Array.isArray(existingRights) || existingRights.length === 0) {
                 const defaultRights = ['dashboard','users','departments','inventory','gate-security',
                     'projects','ambulance','problems','tasks','complaints',
-                    'room-checklist','admissions','lost-found','checklists','admin-checklists'];
+                    'room-checklist','admissions','lost-found','checklists','admin-checklists',
+                    'material-requests','suggestions','employee-dashboard'];
                 DB.set('featureRights', defaultRights);
             }
             const floors = DB.get('floorItems');

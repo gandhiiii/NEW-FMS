@@ -52,6 +52,9 @@ const Router = {
             { id: 'admissions', label: 'Admissions', icon: '🏥', permission: 'admissions' },
             { id: 'lost-found', label: 'Lost & Found', icon: '🔍', permission: 'lost-found' },
             { id: 'admin-checklists', label: 'Admin Checklists', icon: '🔖', permission: 'admin-checklists' },
+            { id: 'material-requests', label: 'Material Requests', icon: '📦', permission: 'material-requests' },
+            { id: 'suggestions', label: 'Suggestions', icon: '💡', permission: 'suggestions' },
+            { id: 'employee-dashboard', label: 'My Dashboard', icon: '📊', permission: 'employee-dashboard' },
             { id: 'checklists', label: 'Checklists', icon: '✅', permission: 'checklists' }
         ];
         let html = '';
@@ -78,7 +81,9 @@ const Router = {
             problems: 'Problems & Solutions', tasks: 'Task Management',
             complaints: 'Complaints', 'room-checklist': 'Room Checklist',
             admissions: 'Admissions & Discharges', 'lost-found': 'Lost & Found',
-            'admin-checklists': 'Admin Checklists', checklists: 'Checklists'
+            'admin-checklists': 'Admin Checklists', checklists: 'Checklists',
+            'material-requests': 'Material Requests', suggestions: 'Suggestions',
+            'employee-dashboard': 'My Dashboard'
         };
         document.getElementById('pageTitle').textContent = titles[module] || module;
         const content = document.getElementById('pageContent');
@@ -101,7 +106,10 @@ const Router = {
             admissions: renderAdmissions,
             'lost-found': renderLostFound,
             'admin-checklists': renderAdminChecklists,
-            checklists: renderChecklists
+            checklists: renderChecklists,
+            'material-requests': renderMaterialRequests,
+            suggestions: renderSuggestions,
+            'employee-dashboard': renderEmployeeDashboard
         };
         if (renderers[module]) {
             content.innerHTML = '<div style="text-align:center;padding:40px;"><div class="spinner"></div>Loading...</div>';

@@ -39,9 +39,15 @@ function switchCompTab(filter, btn) {
 }
 
 function renderCompList() {
+    const user = AUTH.currentUser();
     const complaints = DB.get('complaints');
     const search = (document.getElementById('compSearch')?.value || '').toLowerCase();
-    let filtered = complaints.filter(c =>
+    let filtered = complaints.filter(c => {
+        if (user.role === 'admin') return true;
+        if (user.role === 'hod') return c.department === user.department;
+        return c.createdBy === user.username;
+    });
+    filtered = filtered.filter(c =>
         c.patientName.toLowerCase().includes(search) ||
         c.category.toLowerCase().includes(search) ||
         c.roomNo.toLowerCase().includes(search)
@@ -69,6 +75,7 @@ function renderCompList() {
 }
 
 function showCompForm() {
+    const user = AUTH.currentUser();
     const form = `
         <form id="compForm">
             <div class="grid-2">
@@ -102,6 +109,10 @@ function showCompForm() {
                     </select>
                 </div>
             </div>
+            <div class="form-group" ${user.role === 'admin' || user.role === 'hod' ? '' : 'style="display:none;"'}>
+                <label>Department</label>
+                ${deptDropdown('department', user.department)}
+            </div>
             <div class="form-group">
                 <label>Complaint Details *</label>
                 <textarea name="description" class="form-control" rows="3" required></textarea>
@@ -116,7 +127,11 @@ function saveComp() {
     if (!data.patientName || !data.category || !data.description) {
         APP.notify('Please fill required fields', 'error'); return;
     }
+    const user = AUTH.currentUser();
     data.status = 'open';
+    data.createdBy = user.username;
+    data.createdByName = user.fullName;
+    data.department = data.department || user.department || '';
     data.actionTaken = '';
     data.resolvedBy = '';
     data.resolvedAt = '';
