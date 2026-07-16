@@ -129,8 +129,8 @@ function renderDashboard(container) {
                 <div class="card-header"><h2>👥 Employee KPI — Task Performance</h2></div>
                 <div class="table-responsive">
                     <table>
-                        <thead><tr><th>Employee</th><th>Role</th><th>Tasks Done</th><th>Total</th><th>Rate</th><th>Complaints</th></tr></thead>
-                        <tbody>${renderEmployeeKPI(users, tasks, complaints)}</tbody>
+                        <thead><tr><th>Employee</th><th>Role</th><th>Tasks Done</th><th>Total</th><th>Rate</th><th>Checklists</th><th>Complaints</th></tr></thead>
+                        <tbody>${renderEmployeeKPI(users, tasks, complaints, checklists)}</tbody>
                     </table>
                 </div>
             </div>
@@ -279,9 +279,9 @@ function dashToggleAdmTask(id) {
     renderDashAdmTasks();
 }
 
-function renderEmployeeKPI(users, tasks, complaints) {
+function renderEmployeeKPI(users, tasks, complaints, checklists) {
     const employees = users.filter(u => u.role !== 'admin' && !u.isSuperAdmin);
-    if (employees.length === 0) return '<tr><td colspan="6" class="empty-state">No employees</td></tr>';
+    if (employees.length === 0) return '<tr><td colspan="7" class="empty-state">No employees</td></tr>';
 
     return employees.map(e => {
         const empTasks = tasks.filter(t => t.assignedTo === e.fullName);
@@ -290,6 +290,10 @@ function renderEmployeeKPI(users, tasks, complaints) {
         const rate = total > 0 ? Math.round((done / total) * 100) : 0;
         const empComplaints = complaints.filter(c => c.patientName === e.fullName || c.resolvedBy === e.fullName);
         const handled = empComplaints.filter(c => c.status === 'resolved').length;
+        const empCls = checklists.filter(c => c.assignedTo === e.fullName);
+        const clDone = empCls.filter(c => c.status === 'completed').length;
+        const clTotal = empCls.length;
+        const clRate = clTotal > 0 ? Math.round((clDone / clTotal) * 100) : 0;
         return `<tr>
             <td><strong>${e.fullName}</strong></td>
             <td><span class="badge ${APP.getRoleBadge(e.role)}">${e.role.replace('_',' ')}</span></td>
@@ -301,6 +305,7 @@ function renderEmployeeKPI(users, tasks, complaints) {
                 </div>
                 <span style="font-size:11px;margin-left:4px;">${rate}%</span>
             </td>
+            <td>${clDone}/${clTotal} ${clTotal > 0 ? '<div class="progress-bar" style="width:50px;display:inline-block;vertical-align:middle;"><div class="progress-fill ' + (clRate > 70 ? 'green' : clRate > 40 ? 'yellow' : 'red') + '" style="width:' + clRate + '%"></div></div>' : ''}</td>
             <td>${handled}/${empComplaints.length}</td>
         </tr>`;
     }).join('');
