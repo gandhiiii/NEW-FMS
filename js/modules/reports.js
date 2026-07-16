@@ -621,31 +621,106 @@ function buildSheetXml(name, cols, rows) {
     return xml;
 }
 
+function excelSheet(name, cols, rows) {
+    return buildSheetXml(name.replace(/[\[\]*?\/\\]/g, '').substring(0, 31), cols, rows);
+}
+
 function exportExcel() {
     if (!_lastReportData) return;
-    const { sections, type } = _lastReportData;
-
+    const { sections, type, from, to } = _lastReportData;
+    const users = DB.get('users') || [];
+    const employees = users.filter(u => !u.isSuperAdmin);
     let sheets = '';
-    let idx = 1;
-    sections.forEach(sec => {
-        if (sec.empty) return;
-        let cols, rows;
-        if (type === 'department') {
-            cols = ['Category', 'Count', 'Done'];
-            rows = sec.detail.map(d => [d.category, d.count || 0, d.done || 0]);
-        } else if (type === 'individual' && sec.kpiSection) {
-            cols = sec.kpiSection.cols;
-            rows = sec.kpiSection.rows;
-        } else {
-            cols = sec.cols;
-            rows = sec.rows;
+    let sheetCount = 0;
+
+    // ─── Dashboard / KPIs ───
+    const kpiData = buildOverallKPISection({ from, to });
+    if (kpiData) {
+        sheets += excelSheet('Dashboard KPIs', kpiData.cols, kpiData.rows);
+        sheetCount++;
+    }
+
+    // ─── Employee Summary ───
+    const empRows = [];
+    employees.forEach(e => {
+        const sec = buildEmpKPISection(e.fullName, { from, to });
+        if (sec) {
+            sec.rows.forEach(r => empRows.push([e.fullName, e.department || '', r[0], r[1], r[2]]));
         }
-        const name = (sec.title || 'Sheet' + idx).replace(/[\[\]*?\/\\]/g, '').substring(0, 31);
-        sheets += buildSheetXml(name, cols, rows);
-        idx++;
+    });
+    if (empRows.length) {
+        sheets += excelSheet('Employee Summary', ['Employee','Department','Category','Done/Total','Rate'], empRows);
+        sheetCount++;
+    }
+
+    // ─── Admissions & Discharges (split) ───
+    const allAdmissions = (DB.get('admissions') || []).filter(i => dateFilter(i, from, to));
+    if (allAdmissions.length) {
+        const admCols = ['Patient','Type','Room','Doctor','Admitted','Status'];
+        const admRows = allAdmissions.filter(a => a.status === 'admitted').map(a => [a.patientName||'-', a.type||'-', a.roomNo||a.roomNumber||'-', a.doctor||'-', APP.formatDate(a.admissionDate||a.createdAt)||'-', a.status||'-']);
+        if (admRows.length) { sheets += excelSheet('Admissions', admCols, admRows); sheetCount++; }
+
+        const dcRows = allAdmissions.filter(a => a.status === 'discharged').map(a => [a.patientName||'-', a.type||'-', a.roomNo||a.roomNumber||'-', a.doctor||'-', APP.formatDate(a.admissionDate||a.createdAt)||'-', APP.formatDate(a.dischargeDate)||'-']);
+        if (dcRows.length) { sheets += excelSheet('Discharges', ['Patient','Type','Room','Doctor','Admitted','Discharged'], dcRows); sheetCount++; }
+    }
+
+    // ─── Per-category sheets ───
+    REPORT_CATEGORIES.forEach(cat => {
+        const collectionKey = REPORT_COLLECTIONS[cat.id];
+        let items = (DB.get(collectionKey) || []).filter(i => dateFilter(i, from, to));
+        if (cat.id === 'admissions') return;
+
+        const cols = getColumns(cat.id);
+        let rows = getRows(cat.id, items);
+
+        // Add status summary row at bottom
+        if (items.length > 1) {
+            const stCount = {};
+            items.forEach(i => { const s = i.status || 'unknown'; stCount[s] = (stCount[s] || 0) + 1; });
+            rows.push(['','','','','','']);
+            rows.push(['--- Status Summary ---','','','','','']);
+            Object.keys(stCount).forEach(k => {
+                const row = new Array(cols.length).fill('');
+                row[0] = k; row[1] = stCount[k];
+                rows.push(row);
+            });
+        }
+
+        if (rows.length) {
+            sheets += excelSheet(cat.label || cat.id, cols, rows);
+            sheetCount++;
+        }
     });
 
-    if (!sheets) { APP.notify('No data to export', 'error'); return; }
+    // ─── Report type specific sheets ───
+    if (type === 'department') {
+        const deptData = (DB.get('departments') || []).filter(d => d.active !== false);
+        deptData.forEach(d => {
+            const dUsers = users.filter(u => u.department === d.name);
+            const dRows = dUsers.map(u => {
+                const empSec = buildEmpKPISection(u.fullName, { from, to });
+                if (!empSec) return null;
+                const rates = empSec.rows.map(r => r[2]).join(' | ');
+                return [u.fullName, u.role||'', rates];
+            }).filter(Boolean);
+            if (dRows.length) {
+                sheets += excelSheet(d.name + ' Dept', ['Employee','Role','KPIs'], dRows);
+                sheetCount++;
+            }
+        });
+    } else if (type === 'individual') {
+        employees.forEach(e => {
+            const sec = buildEmpKPISection(e.fullName, { from, to });
+            if (sec) {
+                sheets += excelSheet(e.fullName, sec.cols, sec.rows);
+                sheetCount++;
+            }
+        });
+    } else if (type === 'category' && _lastReportData.cat) {
+        // single category already handled above
+    }
+
+    if (!sheetCount) { APP.notify('No data to export', 'error'); return; }
 
     const xml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
         '<?mso-application progid="Excel.Sheet"?>\n' +
@@ -665,7 +740,7 @@ function exportExcel() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(link.href);
-    APP.notify('Excel downloaded with ' + (idx - 1) + ' sheets', 'success');
+    APP.notify('Excel downloaded with ' + sheetCount + ' sheets', 'success');
 }
 
 /* ─── Print PDF ─── */
