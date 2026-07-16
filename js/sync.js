@@ -58,6 +58,7 @@ const SYNC = {
                 this._status('Connected', 'ok');
                 if (APP && APP.refreshCurrent) APP.refreshCurrent();
                 this._startPolling();
+                this._onVisibility();
             }
         } catch (e) {
             this._status('Init: ' + (e.message || e), 'error');
@@ -208,6 +209,15 @@ const SYNC = {
             this._status('Connected', 'ok');
             if (APP && APP.refreshCurrent) APP.refreshCurrent();
         }
+    },
+
+    _onVisibility() {
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && this._ready) {
+                this._status('Reconnecting...', 'busy');
+                setTimeout(() => this.reSync(), 300);
+            }
+        });
     },
 
     _startPolling() {
