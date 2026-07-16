@@ -530,15 +530,17 @@ const APP = {
     },
 
     _startDailyReset() {
-        const check = () => {
+        const check = async () => {
             try {
                 const now = new Date();
                 if (now.getHours() < 5) return;
-                const last = localStorage.getItem('hms_lastClReset');
+                if (!SYNC._ready) return;
                 const today = this._todayStr();
+                const doc = await SYNC._db.collection('_meta').doc('dailyClReset').get();
+                const last = doc.exists ? doc.data().date : '';
                 if (last === today) return;
                 this._runDailyReset();
-                localStorage.setItem('hms_lastClReset', today);
+                await SYNC._db.collection('_meta').doc('dailyClReset').set({ date: today, updatedAt: new Date().toISOString() });
             } catch (e) {
                 console.warn('Daily reset check error:', e);
             }
