@@ -72,18 +72,6 @@ const DEFAULT_ADMIN = {
 };
 
 const AUTH = {
-    _sid() {
-        try {
-            let p = new URLSearchParams(window.location.search);
-            let s = p.get('sid');
-            if (s && localStorage.getItem('hms_sid_' + s)) return s;
-        } catch (e) {}
-        try {
-            let t = sessionStorage.getItem('hms_t');
-            if (t && localStorage.getItem(t)) return t.replace('hms_u_', '');
-        } catch (e) {}
-        return null;
-    },
     init() {
         try {
             let users = DB.get('users');
@@ -99,8 +87,7 @@ const AUTH = {
                 }
                 const hasEmp = users.some(u => u.username === 'employee');
                 if (!hasEmp) {
-                    const emp = { id: 'emp_default', username: 'employee', password: 'emp123', fullName: 'Default Employee', email: 'emp@hospital.com', phone: '9876543211', role: 'employee', department: 'Maintenance', permissions: ['dashboard','problems','tasks','checklists','material-requests','employee-dashboard','projects','inventory'], createdAt: new Date().toISOString() };
-                    users.push(emp);
+                    users.push({ id: 'emp_default', username: 'employee', password: 'emp123', fullName: 'Default Employee', email: 'emp@hospital.com', phone: '9876543211', role: 'employee', department: 'Maintenance', permissions: ['dashboard','problems','tasks','checklists','material-requests','employee-dashboard','projects','inventory'], createdAt: new Date().toISOString() });
                 }
                 DB.set('users', users);
             }
@@ -119,22 +106,12 @@ const AUTH = {
                 const emp = { id: 'emp_default', username: 'employee', password: 'emp123', fullName: 'Default Employee', email: 'emp@hospital.com', phone: '9876543211', role: 'employee', department: 'Maintenance', permissions: ['dashboard','problems','tasks','checklists','material-requests','employee-dashboard','projects','inventory'], createdAt: new Date().toISOString() };
                 DB.set('users', [admin, emp]);
                 users = [admin, emp];
-            } else {
-                var hasEmp = users.some(function(u) { return u.username === 'employee'; });
-                if (!hasEmp) {
-                    var emp = { id: 'emp_default', username: 'employee', password: 'emp123', fullName: 'Default Employee', email: 'emp@hospital.com', phone: '9876543211', role: 'employee', department: 'Maintenance', permissions: ['dashboard','problems','tasks','checklists','material-requests','employee-dashboard','projects','inventory'], createdAt: new Date().toISOString() };
-                    users.push(emp);
-                    DB.set('users', users);
-                }
             }
             const user = users.find(u => u.username === username && u.password === password);
             if (user) {
-                let sid = Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
                 try { localStorage.setItem('hms_currentUser', JSON.stringify(user)); } catch (e) {}
                 try { localStorage.setItem('hms_loginTime', new Date().toISOString()); } catch (e) {}
-                try { localStorage.setItem('hms_sid_' + sid, JSON.stringify(user)); } catch (e) {}
-                try { sessionStorage.setItem('hms_t', sid); } catch (e) {}
-                return { success: true, user, sid };
+                return { success: true, user };
             }
             return { success: false, message: 'Invalid username or password' };
         } catch (e) {
@@ -142,29 +119,10 @@ const AUTH = {
         }
     },
     logout() {
-        try {
-            let sid = this._sid();
-            if (sid) localStorage.removeItem('hms_sid_' + sid);
-        } catch (e) {}
-        localStorage.removeItem('hms_currentUser');
-        localStorage.removeItem('hms_loginTime');
+        try { localStorage.removeItem('hms_currentUser'); } catch (e) {}
+        try { localStorage.removeItem('hms_loginTime'); } catch (e) {}
     },
     currentUser() {
-        try {
-            let sid = this._sid();
-            if (sid) {
-                let d = localStorage.getItem('hms_sid_' + sid);
-                if (d) return JSON.parse(d);
-            }
-        } catch (e) {}
-        try {
-            let p = new URLSearchParams(window.location.search);
-            let s = p.get('sid');
-            if (s) {
-                let d = localStorage.getItem('hms_sid_' + s);
-                if (d) return JSON.parse(d);
-            }
-        } catch (e) {}
         try {
             let d = localStorage.getItem('hms_currentUser');
             if (d) return JSON.parse(d);
