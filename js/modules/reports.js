@@ -415,6 +415,35 @@ function getRows(catId, items) {
     return all[catId] || items.map(i => [f(i.title || i.name || i.fullName || i.patientName || i.itemName), f(i.status), d(i)]);
 }
 
+/* ─── Chart Helpers ─── */
+
+const RPT_COLORS = ['#1a73e8','#34a853','#fbbc04','#ea4335','#4285f4','#7b1fa2','#00bcd4','#e91e63','#ff5722','#607d8b'];
+
+function chartConfig(type, labels, data, label, isPct) {
+    const isBar = type === 'bar';
+    return {
+        type,
+        data: { labels, datasets: [{ label, data, backgroundColor: isBar ? RPT_COLORS.slice(0,labels.length) : RPT_COLORS, borderColor: '#fff', borderWidth: 1 }] },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: !isBar, position: 'bottom', labels: { boxWidth: 12, padding: 8, font: { size: 11 } } } },
+            scales: isBar ? { y: { beginAtZero: true, max: isPct ? 100 : undefined, grid: { color: '#eee' } }, x: { grid: { display: false } } } : {}
+        }
+    };
+}
+
+function renderChart(canvasId, type, labels, data, label, isPct) {
+    const el = document.getElementById(canvasId);
+    if (!el) return null;
+    try {
+        return new Chart(el.getContext('2d'), chartConfig(type, labels, data, label, isPct));
+    } catch (e) { return null; }
+}
+
+function destroyCharts(arr) {
+    (arr || []).forEach(c => { try { c.destroy(); } catch(e) {} });
+}
+
 /* ─── Render Results ─── */
 
 function renderReportResult(container, ctx) {
@@ -433,25 +462,84 @@ function renderReportResult(container, ctx) {
     }
 }
 
+let _reportCharts = [];
+
 function renderTableResult(container, ctx) {
+    destroyCharts(_reportCharts);
+    _reportCharts = [];
     const { sections } = ctx;
     let html = '';
-    sections.forEach(sec => {
+    sections.forEach((sec, si) => {
         if (sec.empty) {
             html += '<div class="card" style="margin-top:16px;"><div class="card-header"><h3>' + sec.title + '</h3></div><div class="empty-state">No data</div></div>';
             return;
         }
         html += '<div class="card" style="margin-top:16px;">';
-        html += '<div class="card-header"><h3>' + sec.title + ' <span style="font-size:13px;color:var(--gray);font-weight:400;">(' + sec.total + ' records)</span></h3></div>';
-        html += '<div class="table-responsive" style="max-height:400px;overflow-y:auto;">';
+        html += '<div class="card-header"><h3>' + sec.title + ' <span style="font-size:13px;color:var(--gray);font-weight:400;">(' + (sec.total || sec.rows.length) + ' records)</span></h3></div>';
+        html += '<div class="table-responsive" style="max-height:300px;overflow-y:auto;">';
         html += '<table><thead><tr>' + sec.cols.map(c => '<th>' + c + '</th>').join('') + '</tr></thead>';
         html += '<tbody>' + sec.rows.map(r => '<tr>' + r.map(c => '<td>' + c + '</td>').join('') + '</tr>').join('') + '</tbody>';
-        html += '</table></div></div>';
+        html += '</table></div>';
+        if (si === 0 && sec.title === 'Key Performance Indicators') {
+            const labels = [], data = [];
+            sec.rows.forEach(r => { const m = r[1].toString().match(/(\d+)%/); if (m) { labels.push(r[0].replace(' Rate','')); data.push(parseInt(m[1])); } });
+            if (data.length) {
+                html += '<div style="margin-top:12px;height:220px;"><canvas id="rptKpiChart"></canvas></div>';
+            }
+            const catData = sections.filter((s,i) => i > 0).map(s => s.total || s.rows.length).filter(v => v > 0);
+            const catLabels = sections.filter((s,i) => i > 0).map(s => s.title).filter((_,i) => catData[i]);
+            if (catData.length) {
+                html += '<div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
+                html += '<div style="height:200px;"><canvas id="rptPieChart"></canvas></div>';
+                html += '<div style="height:200px;"><canvas id="rptDoughnutChart"></canvas></div>';
+                html += '</div>';
+            }
+        } else if (si > 0 && sec.rows.length >= 3) {
+            const stData = {};
+            sec.rows.forEach(r => { const s = r[3] || r[1] || ''; stData[s] = (stData[s] || 0) + 1; });
+            const keys = Object.keys(stData);
+            if (keys.length >= 2 && keys.length <= 10) {
+                html += '<div style="margin-top:12px;height:180px;"><canvas id="rptCatChart_' + si + '"></canvas></div>';
+            }
+        }
+        html += '</div>';
     });
     container.innerHTML = html;
+    setTimeout(() => {
+        const labels = [], data = [];
+        const kpiSec = sections[0];
+        if (kpiSec && kpiSec.title === 'Key Performance Indicators') {
+            kpiSec.rows.forEach(r => { const m = r[1].toString().match(/(\d+)%/); if (m) { labels.push(r[0].replace(' Rate','')); data.push(parseInt(m[1])); } });
+            if (data.length) {
+                const c1 = renderChart('rptKpiChart','bar',labels,data,'Rate %',true);
+                if (c1) _reportCharts.push(c1);
+            }
+            const catData = sections.filter((s,i) => i > 0).map(s => s.total || s.rows.length).filter(v => v > 0);
+            const catLabels = sections.filter((s,i) => i > 0).map(s => s.title).filter((_,i) => catData[i]);
+            if (catData.length) {
+                const c2 = renderChart('rptPieChart','pie',catLabels,catData,'Records');
+                if (c2) _reportCharts.push(c2);
+                const c3 = renderChart('rptDoughnutChart','doughnut',catLabels,catData,'Records');
+                if (c3) _reportCharts.push(c3);
+            }
+        }
+        sections.forEach((sec, si) => {
+            if (si > 0 && sec.rows.length >= 3) {
+                const stData = {};
+                sec.rows.forEach(r => { const s = r[3] || r[1] || ''; stData[s] = (stData[s] || 0) + 1; });
+                const keys = Object.keys(stData);
+                if (keys.length >= 2 && keys.length <= 10) {
+                    const c = renderChart('rptCatChart_' + si,'doughnut',keys,keys.map(k => stData[k]),'Status');
+                    if (c) _reportCharts.push(c);
+                }
+            }
+        });
+    }, 100);
 }
 
 function renderDeptResult(container, ctx) {
+    destroyCharts(_reportCharts);
+    _reportCharts = [];
     const { sections } = ctx;
     let html = '<div class="card" style="margin-top:16px;"><div class="card-header"><h3>Department-wise Summary</h3></div>';
     html += '<div class="table-responsive"><table><thead><tr><th>Department</th><th>Employees</th><th>Total Records</th><th>Breakdown</th></tr></thead><tbody>';
@@ -461,25 +549,58 @@ function renderDeptResult(container, ctx) {
         html += '<tr><td><strong>' + sec.title + '</strong></td><td>' + (sec.deptUsers || 0) + '</td><td>' + sec.total + '</td><td style="font-size:12px;">' + sec.detail.map(d => d.category + ': ' + d.count).join(' | ') + '</td></tr>';
     });
     html += '<tr style="background:var(--bg);font-weight:600;"><td>Total</td><td></td><td>' + grandTotal + '</td><td></td></tr>';
-    html += '</tbody></table></div></div>';
+    html += '</tbody></table></div>';
+    if (sections.length >= 2) {
+        html += '<div style="margin-top:16px;height:250px;"><canvas id="rptDeptChart"></canvas></div>';
+    }
+    html += '</div>';
     container.innerHTML = html;
+    if (sections.length >= 2) {
+        setTimeout(() => {
+            const c = renderChart('rptDeptChart','bar',sections.map(s => s.title),sections.map(s => s.total),'Total Records',false);
+            if (c) _reportCharts.push(c);
+        }, 100);
+    }
 }
 
 function renderIndivResult(container, ctx) {
+    destroyCharts(_reportCharts);
+    _reportCharts = [];
     const { sections } = ctx;
     let html = '';
-    sections.forEach(sec => {
+    sections.forEach((sec, si) => {
         html += '<div class="card" style="margin-top:16px;">';
         html += '<div class="card-header"><h3>' + sec.title + '</h3></div>';
         if (sec.kpiSection) {
+            html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
             html += '<div class="table-responsive"><table><thead><tr>' + sec.kpiSection.cols.map(c => '<th>' + c + '</th>').join('') + '</tr></thead>';
             html += '<tbody>' + sec.kpiSection.rows.map(r => '<tr>' + r.map(c => '<td>' + c + '</td>').join('') + '</tr>').join('') + '</tbody>';
             html += '</table></div>';
+            const hasPct = sec.kpiSection.rows.some(r => r[2] && r[2].toString().includes('%'));
+            if (hasPct) {
+                html += '<div style="height:200px;"><canvas id="rptEmpChart_' + si + '"></canvas></div>';
+            }
+            html += '</div>';
         }
         html += '</div>';
     });
     if (!html) html = '<div class="empty-state" style="margin-top:16px;">No data found for the selected filters</div>';
     container.innerHTML = html;
+    setTimeout(() => {
+        sections.forEach((sec, si) => {
+            if (sec.kpiSection) {
+                const labels = [], data = [];
+                sec.kpiSection.rows.forEach(r => {
+                    const m = r[2] && r[2].toString().match(/(\d+)%/);
+                    if (m) { labels.push(r[0]); data.push(parseInt(m[1])); }
+                });
+                if (data.length) {
+                    const c = renderChart('rptEmpChart_' + si,'bar',labels,data,'Rate %',true);
+                    if (c) _reportCharts.push(c);
+                }
+            }
+        });
+    }, 100);
 }
 
 /* ─── Export Excel (multi-sheet XML) ─── */
@@ -555,22 +676,25 @@ function printReport() {
 
     let html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + _lastReportTitle + '</title>';
     html += '<style>';
-    html += 'body{font-family:Arial,sans-serif;margin:20px;color:#333;}';
-    html += 'h1{font-size:20px;margin-bottom:4px;}';
-    html += '.sub{font-size:12px;color:#666;margin-bottom:20px;}';
-    html += 'h2{font-size:16px;margin:16px 0 8px;border-bottom:2px solid #1a73e8;padding-bottom:4px;}';
-    html += 'table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px;}';
-    html += 'th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;}';
-    html += 'th{background:#1a73e8;color:#fff;font-size:11px;}';
-    html += 'tr:nth-child(even){background:#f5f5f5;}';
-    html += '@media print{body{margin:10mm;}h2{page-break-after:avoid;}table{page-break-inside:auto;}tr{page-break-inside:avoid;}}';
+    html += '*{box-sizing:border-box;}';
+    html += 'body{font-family:"Segoe UI",Arial,sans-serif;margin:30px;color:#222;}';
+    html += 'h1{font-size:24px;margin-bottom:2px;color:#1a73e8;}';
+    html += '.sub{font-size:12px;color:#888;margin-bottom:24px;border-bottom:2px solid #1a73e8;padding-bottom:8px;}';
+    html += 'h2{font-size:16px;margin:20px 0 8px;color:#333;border-left:4px solid #1a73e8;padding-left:10px;}';
+    html += 'table{width:100%;border-collapse:collapse;margin-bottom:20px;font-size:11px;}';
+    html += 'th{background:#1a73e8;color:#fff;padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;}';
+    html += 'td{border:1px solid #ddd;padding:6px 10px;}';
+    html += 'tr:nth-child(even){background:#f8f9fa;}';
+    html += 'tr:hover{background:#e8f0fe;}';
+    html += '.footer{text-align:center;font-size:10px;color:#aaa;margin-top:30px;border-top:1px solid #eee;padding-top:10px;}';
+    html += '@media print{body{margin:15mm;}h2{page-break-after:avoid;}table{page-break-inside:auto;}tr{page-break-inside:avoid;page-break-after:auto;}th{background:#1a73e8!important;color:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}}';
     html += '</style></head><body>';
     html += '<h1>' + _lastReportTitle + '</h1>';
-    html += '<div class="sub">Generated: ' + new Date().toLocaleString() + ' | Total sections: ' + sections.length + '</div>';
+    html += '<div class="sub">Generated: ' + new Date().toLocaleString() + ' | ' + sections.length + ' sections</div>';
 
     sections.forEach(sec => {
         if (sec.empty) {
-            html += '<h2>' + sec.title + ' (No data)</h2>';
+            html += '<h2>' + sec.title + ' — No data</h2>';
             return;
         }
         html += '<h2>' + sec.title + '</h2>';
@@ -595,9 +719,10 @@ function printReport() {
         }
     });
 
+    html += '<div class="footer">HMS Report — Confidential</div>';
     html += '</body></html>';
 
-    const w = window.open('', '_blank', 'width=1024,height=768');
+    const w = window.open('_blank');
     if (!w) {
         APP.notify('Please allow popups for print preview', 'error');
         return;
