@@ -626,121 +626,133 @@ function excelSheet(name, cols, rows) {
 }
 
 function exportExcel() {
-    if (!_lastReportData) return;
-    const { sections, type, from, to } = _lastReportData;
-    const users = DB.get('users') || [];
-    const employees = users.filter(u => !u.isSuperAdmin);
-    let sheets = '';
-    let sheetCount = 0;
+    try {
+        if (!_lastReportData) { APP.notify('Generate a report first', 'error'); return; }
+        const { sections, type, from, to } = _lastReportData;
+        const users = DB.get('users') || [];
+        const employees = users.filter(u => !u.isSuperAdmin);
+        let sheets = '';
+        let sheetCount = 0;
 
-    // ─── Dashboard / KPIs ───
-    const kpiData = buildOverallKPISection({ from, to });
-    if (kpiData) {
-        sheets += excelSheet('Dashboard KPIs', kpiData.cols, kpiData.rows);
-        sheetCount++;
-    }
-
-    // ─── Employee Summary ───
-    const empRows = [];
-    employees.forEach(e => {
-        const sec = buildEmpKPISection(e.fullName, { from, to });
-        if (sec) {
-            sec.rows.forEach(r => empRows.push([e.fullName, e.department || '', r[0], r[1], r[2]]));
+        function addSheet(name, cols, rows) {
+            try {
+                if (!rows || !rows.length) return;
+                const safe = rows.filter(r => r && r.length);
+                if (!safe.length) return;
+                sheets += excelSheet(name, cols || [], safe);
+                sheetCount++;
+            } catch (e) { console.warn('Sheet skip [' + name + ']:', e); }
         }
-    });
-    if (empRows.length) {
-        sheets += excelSheet('Employee Summary', ['Employee','Department','Category','Done/Total','Rate'], empRows);
-        sheetCount++;
-    }
 
-    // ─── Admissions & Discharges (split) ───
-    const allAdmissions = (DB.get('admissions') || []).filter(i => dateFilter(i, from, to));
-    if (allAdmissions.length) {
-        const admCols = ['Patient','Type','Room','Doctor','Admitted','Status'];
-        const admRows = allAdmissions.filter(a => a.status === 'admitted').map(a => [a.patientName||'-', a.type||'-', a.roomNo||a.roomNumber||'-', a.doctor||'-', APP.formatDate(a.admissionDate||a.createdAt)||'-', a.status||'-']);
-        if (admRows.length) { sheets += excelSheet('Admissions', admCols, admRows); sheetCount++; }
+        // ─── Dashboard / KPIs ───
+        try {
+            const kpiData = buildOverallKPISection({ from, to });
+            if (kpiData && kpiData.rows && kpiData.rows.length) {
+                addSheet('Dashboard KPIs', kpiData.cols, kpiData.rows);
+            }
+        } catch (e) { console.warn('KPI sheet error:', e); }
 
-        const dcRows = allAdmissions.filter(a => a.status === 'discharged').map(a => [a.patientName||'-', a.type||'-', a.roomNo||a.roomNumber||'-', a.doctor||'-', APP.formatDate(a.admissionDate||a.createdAt)||'-', APP.formatDate(a.dischargeDate)||'-']);
-        if (dcRows.length) { sheets += excelSheet('Discharges', ['Patient','Type','Room','Doctor','Admitted','Discharged'], dcRows); sheetCount++; }
-    }
-
-    // ─── Per-category sheets ───
-    REPORT_CATEGORIES.forEach(cat => {
-        const collectionKey = REPORT_COLLECTIONS[cat.id];
-        let items = (DB.get(collectionKey) || []).filter(i => dateFilter(i, from, to));
-        if (cat.id === 'admissions') return;
-
-        const cols = getColumns(cat.id);
-        let rows = getRows(cat.id, items);
-
-        // Add status summary row at bottom
-        if (items.length > 1) {
-            const stCount = {};
-            items.forEach(i => { const s = i.status || 'unknown'; stCount[s] = (stCount[s] || 0) + 1; });
-            rows.push(['','','','','','']);
-            rows.push(['--- Status Summary ---','','','','','']);
-            Object.keys(stCount).forEach(k => {
-                const row = new Array(cols.length).fill('');
-                row[0] = k; row[1] = stCount[k];
-                rows.push(row);
+        // ─── Employee Summary ───
+        try {
+            const empRows = [];
+            employees.forEach(e => {
+                try {
+                    const sec = buildEmpKPISection(e.fullName, { from, to });
+                    if (sec && sec.rows) {
+                        sec.rows.forEach(r => empRows.push([e.fullName || '', e.department || '', r[0] || '', r[1] || '', r[2] || '']));
+                    }
+                } catch (ee) {}
             });
-        }
+            addSheet('Employee Summary', ['Employee','Department','Category','Done/Total','Rate'], empRows);
+        } catch (e) { console.warn('Emp summary error:', e); }
 
-        if (rows.length) {
-            sheets += excelSheet(cat.label || cat.id, cols, rows);
-            sheetCount++;
-        }
-    });
+        // ─── Admissions & Discharges (split) ───
+        try {
+            const allAdmissions = (DB.get('admissions') || []).filter(i => dateFilter(i, from, to));
+            if (allAdmissions.length) {
+                const f = v => v || '-';
+                const admRows = allAdmissions.filter(a => a.status === 'admitted').map(a => [f(a.patientName), f(a.type), f(a.roomNo || a.roomNumber), f(a.doctor), f(APP.formatDate(a.admissionDate || a.createdAt)), f(a.status)]);
+                addSheet('Admissions', ['Patient','Type','Room','Doctor','Admitted','Status'], admRows);
+                const dcRows = allAdmissions.filter(a => a.status === 'discharged').map(a => [f(a.patientName), f(a.type), f(a.roomNo || a.roomNumber), f(a.doctor), f(APP.formatDate(a.admissionDate || a.createdAt)), f(APP.formatDate(a.dischargeDate))]);
+                addSheet('Discharges', ['Patient','Type','Room','Doctor','Admitted','Discharged'], dcRows);
+            }
+        } catch (e) { console.warn('Admission sheet error:', e); }
 
-    // ─── Report type specific sheets ───
-    if (type === 'department') {
-        const deptData = (DB.get('departments') || []).filter(d => d.active !== false);
-        deptData.forEach(d => {
-            const dUsers = users.filter(u => u.department === d.name);
-            const dRows = dUsers.map(u => {
-                const empSec = buildEmpKPISection(u.fullName, { from, to });
-                if (!empSec) return null;
-                const rates = empSec.rows.map(r => r[2]).join(' | ');
-                return [u.fullName, u.role||'', rates];
-            }).filter(Boolean);
-            if (dRows.length) {
-                sheets += excelSheet(d.name + ' Dept', ['Employee','Role','KPIs'], dRows);
-                sheetCount++;
-            }
+        // ─── Per-category sheets ───
+        REPORT_CATEGORIES.forEach(cat => {
+            try {
+                if (cat.id === 'admissions') return;
+                const collectionKey = REPORT_COLLECTIONS[cat.id];
+                const items = (DB.get(collectionKey) || []).filter(i => dateFilter(i, from, to));
+                if (!items.length) return;
+                const cols = getColumns(cat.id);
+                let rows = getRows(cat.id, items);
+                const stCount = {};
+                items.forEach(i => { const s = i.status || 'N/A'; stCount[s] = (stCount[s] || 0) + 1; });
+                if (Object.keys(stCount).length > 1) {
+                    rows.push(Array(cols.length).fill(''));
+                    rows.push(['--- Status Summary ---']);
+                    Object.keys(stCount).forEach(k => {
+                        const row = Array(cols.length).fill('');
+                        row[0] = k; row[1] = String(stCount[k]);
+                        rows.push(row);
+                    });
+                }
+                addSheet(cat.label || cat.id, cols, rows);
+            } catch (e) { console.warn('Sheet ' + cat.id + ' error:', e); }
         });
-    } else if (type === 'individual') {
-        employees.forEach(e => {
-            const sec = buildEmpKPISection(e.fullName, { from, to });
-            if (sec) {
-                sheets += excelSheet(e.fullName, sec.cols, sec.rows);
-                sheetCount++;
+
+        // ─── Report type specific sheets ───
+        try {
+            if (type === 'department') {
+                const deptData = (DB.get('departments') || []).filter(d => d.active !== false);
+                deptData.forEach(d => {
+                    try {
+                        const dRows = users.filter(u => u.department === d.name).map(u => {
+                            const sec = buildEmpKPISection(u.fullName, { from, to });
+                            if (!sec || !sec.rows || !sec.rows.length) return null;
+                            return [u.fullName || '', u.role || '', sec.rows.map(r => r[2]).join(' | ')];
+                        }).filter(Boolean);
+                        addSheet(d.name + ' Dept', ['Employee','Role','KPIs'], dRows);
+                    } catch (ee) {}
+                });
+            } else if (type === 'individual') {
+                employees.forEach(e => {
+                    try {
+                        const sec = buildEmpKPISection(e.fullName, { from, to });
+                        if (sec && sec.rows && sec.rows.length) {
+                            addSheet(e.fullName.replace(/[\/\\*?]/g,' ').substring(0,31), sec.cols, sec.rows);
+                        }
+                    } catch (ee) {}
+                });
             }
-        });
-    } else if (type === 'category' && _lastReportData.cat) {
-        // single category already handled above
+        } catch (e) { console.warn('Type-specific sheets error:', e); }
+
+        if (!sheetCount) { APP.notify('No data to export', 'error'); return; }
+
+        const xml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+            '<?mso-application progid="Excel.Sheet"?>\n' +
+            '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"\n' +
+            ' xmlns:o="urn:schemas-microsoft-com:office:office"\n' +
+            ' xmlns:x="urn:schemas-microsoft-com:office:excel"\n' +
+            ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n' +
+            ' <DocumentProperties><Title>' + escXml(_lastReportTitle) + '</Title></DocumentProperties>\n' +
+            sheets +
+            '</Workbook>';
+
+        const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = _lastReportTitle.replace(/\s+/g, '_') + '.xls';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+        APP.notify('Excel downloaded with ' + sheetCount + ' sheets', 'success');
+    } catch (e) {
+        console.error('Export error:', e);
+        APP.notify('Export failed: ' + e.message, 'error');
     }
-
-    if (!sheetCount) { APP.notify('No data to export', 'error'); return; }
-
-    const xml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
-        '<?mso-application progid="Excel.Sheet"?>\n' +
-        '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"\n' +
-        ' xmlns:o="urn:schemas-microsoft-com:office:office"\n' +
-        ' xmlns:x="urn:schemas-microsoft-com:office:excel"\n' +
-        ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n' +
-        ' <DocumentProperties><Title>' + escXml(_lastReportTitle) + '</Title></DocumentProperties>\n' +
-        sheets +
-        '</Workbook>';
-
-    const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = _lastReportTitle.replace(/\s+/g, '_') + '.xls';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(link.href);
-    APP.notify('Excel downloaded with ' + sheetCount + ' sheets', 'success');
 }
 
 /* ─── Print PDF ─── */
