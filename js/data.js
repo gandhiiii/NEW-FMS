@@ -77,19 +77,7 @@ const AUTH = {
             let users = DB.get('users');
             if (!Array.isArray(users) || users.length === 0) {
                 const admin = { ...DEFAULT_ADMIN, createdAt: new Date().toISOString() };
-                const emp = { id: 'emp_default', username: 'employee', password: 'emp123', fullName: 'Default Employee', email: 'emp@hospital.com', phone: '9876543211', role: 'employee', department: 'Maintenance', permissions: ['dashboard','problems','tasks','checklists','material-requests','employee-dashboard','projects','inventory'] };
-                DB.set('users', [admin, emp]);
-            } else {
-                const hasAdmin = users.some(u => u.isSuperAdmin || u.username === 'admin');
-                if (!hasAdmin) {
-                    const admin = { ...DEFAULT_ADMIN, createdAt: new Date().toISOString() };
-                    users.push(admin);
-                }
-                const hasEmp = users.some(u => u.username === 'employee');
-                if (!hasEmp) {
-                    users.push({ id: 'emp_default', username: 'employee', password: 'emp123', fullName: 'Default Employee', email: 'emp@hospital.com', phone: '9876543211', role: 'employee', department: 'Maintenance', permissions: ['dashboard','problems','tasks','checklists','material-requests','employee-dashboard','projects','inventory'], createdAt: new Date().toISOString() });
-                }
-                DB.set('users', users);
+                DB.set('users', [admin]);
             }
             if (!localStorage.getItem('hms_resetTokens') || typeof DB.get('resetTokens')?.length === 'undefined') {
                 DB.set('resetTokens', []);
@@ -100,13 +88,9 @@ const AUTH = {
     },
     login(username, password) {
         try {
-            const FALLBACK_USERS = [
-                { id: 'admin_super', username: 'admin', password: 'admin123', fullName: 'Super Admin', email: 'admin@hospital.com', phone: '9876543210', role: 'admin', department: 'Administration', isSuperAdmin: true, permissions: ['all'] },
-                { id: 'emp_default', username: 'employee', password: 'emp123', fullName: 'Default Employee', email: 'emp@hospital.com', phone: '9876543211', role: 'employee', department: 'Maintenance', permissions: ['dashboard','problems','tasks','checklists','material-requests','employee-dashboard','projects','inventory'] }
-            ];
             let users = DB.get('users');
             if (!Array.isArray(users) || users.length === 0) {
-                users = FALLBACK_USERS;
+                return { success: false, message: 'No users found. Contact admin.' };
             }
             const user = users.find(u => u.username === username && u.password === password);
             if (user) {
