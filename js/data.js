@@ -511,6 +511,11 @@ const APP = {
         try {
             AUTH.init();
             this.seedData();
+            try {
+                var _users = DB.get('users') || [];
+                var _clean = _users.filter(function(_u) { return _u && typeof _u === 'object' && typeof _u.fullName === 'string' && typeof _u.username === 'string'; });
+                if (_clean.length !== _users.length) DB.set('users', _clean);
+            } catch (_e) {}
             APP_SYNC.init();
         } catch (e) {
             console.warn('APP.init error:', e);
