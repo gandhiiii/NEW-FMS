@@ -84,7 +84,7 @@ function renderReports(container) {
             </div>
             <div style="display:flex;gap:8px;margin-top:8px;">
                 <button class="btn btn-primary" onclick="generateReport()">Generate Report</button>
-                <button class="btn btn-success" onclick="exportCSV()" id="rptExportBtn" disabled>Export Excel (CSV)</button>
+                <button class="btn btn-success" onclick="exportExcel()" id="rptExportBtn" disabled>Export Excel</button>
                 <button class="btn btn-info" onclick="printReport()" id="rptPrintBtn" disabled>Print PDF</button>
             </div>
         </div>
@@ -482,47 +482,69 @@ function renderIndivResult(container, ctx) {
     container.innerHTML = html;
 }
 
-/* ─── Export CSV ─── */
+/* ─── Export Excel (multi-sheet XML) ─── */
 
-function exportCSV() {
+function escXml(v) {
+    return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function buildSheetXml(name, cols, rows) {
+    let xml = '  <Worksheet ss:Name="' + escXml(name) + '">\n    <Table>\n';
+    if (cols && cols.length) {
+        xml += '      <Row>' + cols.map(c => '<Cell><Data ss:Type="String">' + escXml(c) + '</Data></Cell>').join('') + '</Row>\n';
+    }
+    rows.forEach(r => {
+        xml += '      <Row>' + r.map(c => '<Cell><Data ss:Type="String">' + escXml(c) + '</Data></Cell>').join('') + '</Row>\n';
+    });
+    xml += '    </Table>\n  </Worksheet>\n';
+    return xml;
+}
+
+function exportExcel() {
     if (!_lastReportData) return;
     const { sections, type } = _lastReportData;
 
-    let csv = '\uFEFF';
-    csv += _lastReportTitle + '\r\n';
-    csv += 'Generated: ' + new Date().toLocaleString() + '\r\n\r\n';
-
+    let sheets = '';
+    let idx = 1;
     sections.forEach(sec => {
         if (sec.empty) return;
-        csv += '"' + sec.title + '"\r\n';
+        let cols, rows;
         if (type === 'department') {
-            csv += '"Category","Count","Done"\r\n';
-            sec.detail.forEach(d => {
-                csv += '"' + d.category + '",' + (d.count || 0) + ',' + (d.done || 0) + '\r\n';
-            });
+            cols = ['Category', 'Count', 'Done'];
+            rows = sec.detail.map(d => [d.category, d.count || 0, d.done || 0]);
         } else if (type === 'individual' && sec.kpiSection) {
-            csv += sec.kpiSection.cols.map(c => '"' + c + '"').join(',') + '\r\n';
-            sec.kpiSection.rows.forEach(r => {
-                csv += r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',') + '\r\n';
-            });
+            cols = sec.kpiSection.cols;
+            rows = sec.kpiSection.rows;
         } else {
-            csv += sec.cols.map(c => '"' + c + '"').join(',') + '\r\n';
-            sec.rows.forEach(r => {
-                csv += r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',') + '\r\n';
-            });
+            cols = sec.cols;
+            rows = sec.rows;
         }
-        csv += '\r\n';
+        const name = (sec.title || 'Sheet' + idx).replace(/[\[\]*?\/\\]/g, '').substring(0, 31);
+        sheets += buildSheetXml(name, cols, rows);
+        idx++;
     });
 
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    if (!sheets) { APP.notify('No data to export', 'error'); return; }
+
+    const xml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+        '<?mso-application progid="Excel.Sheet"?>\n' +
+        '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"\n' +
+        ' xmlns:o="urn:schemas-microsoft-com:office:office"\n' +
+        ' xmlns:x="urn:schemas-microsoft-com:office:excel"\n' +
+        ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n' +
+        ' <DocumentProperties><Title>' + escXml(_lastReportTitle) + '</Title></DocumentProperties>\n' +
+        sheets +
+        '</Workbook>';
+
+    const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = _lastReportTitle.replace(/\s+/g, '_') + '.csv';
+    link.download = _lastReportTitle.replace(/\s+/g, '_') + '.xls';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(link.href);
-    APP.notify('CSV downloaded', 'success');
+    APP.notify('Excel downloaded with ' + (idx - 1) + ' sheets', 'success');
 }
 
 /* ─── Print PDF ─── */
