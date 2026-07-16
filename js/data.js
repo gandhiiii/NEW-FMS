@@ -100,12 +100,13 @@ const AUTH = {
     },
     login(username, password) {
         try {
+            const FALLBACK_USERS = [
+                { id: 'admin_super', username: 'admin', password: 'admin123', fullName: 'Super Admin', email: 'admin@hospital.com', phone: '9876543210', role: 'admin', department: 'Administration', isSuperAdmin: true, permissions: ['all'] },
+                { id: 'emp_default', username: 'employee', password: 'emp123', fullName: 'Default Employee', email: 'emp@hospital.com', phone: '9876543211', role: 'employee', department: 'Maintenance', permissions: ['dashboard','problems','tasks','checklists','material-requests','employee-dashboard','projects','inventory'] }
+            ];
             let users = DB.get('users');
             if (!Array.isArray(users) || users.length === 0) {
-                const admin = { ...DEFAULT_ADMIN, createdAt: new Date().toISOString() };
-                const emp = { id: 'emp_default', username: 'employee', password: 'emp123', fullName: 'Default Employee', email: 'emp@hospital.com', phone: '9876543211', role: 'employee', department: 'Maintenance', permissions: ['dashboard','problems','tasks','checklists','material-requests','employee-dashboard','projects','inventory'], createdAt: new Date().toISOString() };
-                DB.set('users', [admin, emp]);
-                users = [admin, emp];
+                users = FALLBACK_USERS;
             }
             const user = users.find(u => u.username === username && u.password === password);
             if (user) {
