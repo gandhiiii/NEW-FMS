@@ -635,25 +635,21 @@ function escXml(v) {
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function toCell(v) {
-    return '<Cell><Data ss:Type="String">' + escXml(v) + '</Data></Cell>';
-}
-
 function buildSheetXml(name, cols, rows) {
     name = String(name).replace(/[\[\]*?\/\\:]/g, '').substring(0, 31);
-    let xml = '<Worksheet ss:Name="' + escXml(name) + '"><Table>\n';
+    var xml = '<ss:Worksheet ss:Name="' + escXml(name) + '"><ss:Table>\n';
     if (cols && cols.length) {
-        xml += '<Row>' + cols.map(toCell).join('') + '</Row>\n';
+        xml += '<ss:Row>' + cols.map(function(c) { return '<ss:Cell><ss:Data ss:Type="String">' + escXml(c) + '</ss:Data></ss:Cell>'; }).join('') + '</ss:Row>\n';
     }
     rows.forEach(function(r) {
         if (!r || !r.length) return;
-        xml += '<Row>';
+        xml += '<ss:Row>';
         for (var i = 0; i < r.length; i++) {
-            xml += toCell(r[i]);
+            xml += '<ss:Cell><ss:Data ss:Type="String">' + escXml(r[i]) + '</ss:Data></ss:Cell>';
         }
-        xml += '</Row>\n';
+        xml += '</ss:Row>\n';
     });
-    xml += '</Table></Worksheet>\n';
+    xml += '</ss:Table></ss:Worksheet>\n';
     return xml;
 }
 
@@ -766,16 +762,20 @@ function exportExcel() {
 
         if (!sheetCount) { APP.notify('No data to export', 'error'); return; }
 
-        var xml = '<?xml version="1.0" encoding="UTF-8"?>\r\n' +
-            '<?mso-application progid="Excel.Sheet"?>\r\n' +
-            '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"\r\n' +
+        var html = '<html xmlns:o="urn:schemas-microsoft-com:office:office"\r\n' +
+            ' xmlns:x="urn:schemas-microsoft-com:office:excel"\r\n' +
             ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\r\n' +
-            ' <DocumentProperties><Title>' + escXml(_lastReportTitle) + '</Title></DocumentProperties>\r\n' +
+            '<head><meta charset="UTF-8"><title>' + escXml(_lastReportTitle) + '</title>\r\n' +
+            '<!--[if gte mso 9]><xml>\r\n' +
+            '<ss:Workbook>\r\n' +
             sheets +
-            '</Workbook>';
+            '</ss:Workbook>\r\n' +
+            '<![endif]-->\r\n' +
+            '</head><body>\r\n' +
+            '<table><tr><td style="font-family:Arial;font-size:14px;padding:20px;">' + escXml(_lastReportTitle) + '<br><span style="font-size:11px;color:#888;">Generated ' + new Date().toLocaleString() + ' — ' + sheetCount + ' sheets. Open in Excel to see all tabs.</span></td></tr></table>\r\n' +
+            '</body></html>';
 
-        var bom = '\uFEFF';
-        var blob = new Blob([bom + xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
+        var blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
         var url = URL.createObjectURL(blob);
         var link = document.createElement('a');
         link.href = url;
