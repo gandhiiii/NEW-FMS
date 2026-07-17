@@ -625,28 +625,40 @@ function renderIndivResult(container, ctx) {
     }, 100);
 }
 
-/* ─── Export Excel (HTML-based multi-sheet) ─── */
+/* ─── Export Excel (multi-sheet XML) ─── */
 
-function escCell(v) {
-    return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+function escXml(v) {
+    if (v === null || v === undefined) return '';
+    if (typeof v === 'object') v = String(v);
+    return String(v)
+        .replace(/[^\x09\x0A\x0D\x20-\uD7FF\uE000-\uFFFD]/g, '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function buildHtmlSheet(name, cols, rows) {
-    const safeName = escCell(name).replace(/[\[\]*?\/\\:&]/g, '').substring(0, 31) || 'Sheet';
-    let html = '<table><tr><td colspan="' + (cols ? cols.length : 1) + '" style="font-weight:bold;font-size:14px;background:#1a73e8;color:#fff;padding:8px;">' + safeName + '</td></tr>';
+function toCell(v) {
+    return '<Cell><Data ss:Type="String">' + escXml(v) + '</Data></Cell>';
+}
+
+function buildSheetXml(name, cols, rows) {
+    name = String(name).replace(/[\[\]*?\/\\:]/g, '').substring(0, 31);
+    let xml = '<Worksheet ss:Name="' + escXml(name) + '"><Table>\n';
     if (cols && cols.length) {
-        html += '<tr>' + cols.map(c => '<th style="background:#4285f4;color:#fff;padding:6px 10px;font-size:11px;text-align:left;">' + escCell(c) + '</th>').join('') + '</tr>';
+        xml += '<Row>' + cols.map(toCell).join('') + '</Row>\n';
     }
-    rows.forEach(r => {
+    rows.forEach(function(r) {
         if (!r || !r.length) return;
-        html += '<tr>' + r.map(c => '<td style="padding:4px 8px;border:1px solid #ddd;font-size:11px;">' + escCell(c) + '</td>').join('') + '</tr>';
+        xml += '<Row>';
+        for (var i = 0; i < r.length; i++) {
+            xml += toCell(r[i]);
+        }
+        xml += '</Row>\n';
     });
-    html += '</table><br><br>';
-    return { html, name: safeName };
+    xml += '</Table></Worksheet>\n';
+    return xml;
 }
 
 function excelSheet(name, cols, rows) {
-    return buildHtmlSheet(name, cols, rows);
+    return buildSheetXml(name, cols, rows);
 }
 
 function exportExcel() {
@@ -655,7 +667,7 @@ function exportExcel() {
         const { sections, type, from, to } = _lastReportData;
         const users = DB.get('users') || [];
         const employees = users.filter(u => !u.isSuperAdmin);
-        let sheets = [];
+        let sheets = '';
         let sheetCount = 0;
 
         function addSheet(name, cols, rows) {
@@ -663,8 +675,7 @@ function exportExcel() {
                 if (!rows || !rows.length) return;
                 const safe = rows.filter(r => r && r.length);
                 if (!safe.length) return;
-                const result = excelSheet(name, cols || [], safe);
-                sheets.push(result);
+                sheets += excelSheet(name, cols || [], safe);
                 sheetCount++;
             } catch (e) { console.warn('Sheet skip [' + name + ']:', e); }
         }
@@ -755,33 +766,26 @@ function exportExcel() {
 
         if (!sheetCount) { APP.notify('No data to export', 'error'); return; }
 
-        const sheetNames = [];
-        let bodyHtml = '';
-        sheets.forEach(s => {
-            sheetNames.push(s.name);
-            bodyHtml += s.html;
-        });
+        var xml = '<?xml version="1.0" encoding="UTF-8"?>\r\n' +
+            '<?mso-application progid="Excel.Sheet"?>\r\n' +
+            '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"\r\n' +
+            ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\r\n' +
+            ' <DocumentProperties><Title>' + escXml(_lastReportTitle) + '</Title></DocumentProperties>\r\n' +
+            sheets +
+            '</Workbook>';
 
-        let html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
-        html += '<head><meta charset="UTF-8"><title>' + escCell(_lastReportTitle) + '</title>';
-        html += '<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:Worksheets>';
-        sheetNames.forEach(n => { html += '<x:Worksheet><x:Name>' + escCell(n) + '</x:Name></x:Worksheet>'; });
-        html += '</x:Worksheets></x:ExcelWorkbook></xml><![endif]-->';
-        html += '<style>body{font-family:Arial,sans-serif;}table{border-collapse:collapse;width:100%;margin-bottom:16px;}th{background:#4285f4;color:#fff;padding:6px 10px;font-size:11px;text-align:left;border:1px solid #1a73e8;}td{padding:4px 8px;border:1px solid #ddd;font-size:11px;}tr:nth-child(even){background:#f8f9fa;}</style>';
-        html += '</head><body>';
-        html += '<h1 style="font-size:18px;color:#1a73e8;">' + escCell(_lastReportTitle) + '</h1>';
-        html += '<p style="font-size:11px;color:#888;">Generated: ' + new Date().toLocaleString() + ' | ' + sheetCount + ' sheets</p>';
-        html += bodyHtml;
-        html += '</body></html>';
-
-        const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
+        var bom = '\uFEFF';
+        var blob = new Blob([bom + xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement('a');
+        link.href = url;
         link.download = _lastReportTitle.replace(/\s+/g, '_') + '.xls';
         document.body.appendChild(link);
         link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(link.href);
+        setTimeout(function() {
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }, 100);
         APP.notify('Excel downloaded with ' + sheetCount + ' sheets', 'success');
     } catch (e) {
         console.error('Export error:', e);
