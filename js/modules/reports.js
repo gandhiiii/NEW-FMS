@@ -921,7 +921,7 @@ function printReport() {
             return;
         }
         html += '<h2>' + sec.title + '</h2>';
-        if (type === 'department') {
+        if (type === 'department' && sec.detail) {
             html += '<table><thead><tr><th>Category</th><th>Count</th><th>Done</th></tr></thead><tbody>';
             sec.detail.forEach(d => {
                 html += '<tr><td>' + d.category + '</td><td>' + (d.count || 0) + '</td><td>' + (d.done || 0) + '</td></tr>';
