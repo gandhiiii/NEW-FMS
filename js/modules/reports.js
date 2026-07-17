@@ -298,7 +298,36 @@ function buildDeptReport(ctx) {
         let totalItems = 0;
         const detail = [];
 
-        REPORT_CATEGORIES.forEach(cat => {
+    // Budget section
+    try {
+        var bdgCfg = DB.get('budgetConfig') || {};
+        if (bdgCfg.totalBudget > 0) {
+            var _tb = parseFloat(bdgCfg.totalBudget) || 0;
+            var _me = 0, _mc = 0, _af = 0, _ps = 0;
+            (DB.get('inventory_receipts') || []).forEach(function(r) { _me += parseFloat(r.total) || 0; });
+            (DB.get('problems') || []).forEach(function(p) { _mc += parseFloat(p.maintenanceCost || p.cost || 0) || 0; });
+            (DB.get('ambulance_trips') || []).forEach(function(t) { _af += parseFloat(t.fare) || 0; });
+            (DB.get('projects') || []).forEach(function(p) { _ps += parseFloat(p.spent) || 0; });
+            var _te = _me + _mc + _af + _ps;
+            sections.push({
+                title: 'Budget Overview',
+                total: 1,
+                cols: ['Metric', 'Amount (₹)'],
+                rows: [
+                    ['Total Budget', '₹' + _tb.toLocaleString()],
+                    ['Material Purchase', '₹' + _me.toLocaleString()],
+                    ['Maintenance Cost', '₹' + _mc.toLocaleString()],
+                    ['Ambulance Fare', '₹' + _af.toLocaleString()],
+                    ['Project Spent', '₹' + _ps.toLocaleString()],
+                    ['Total Expense', '₹' + _te.toLocaleString()],
+                    ['Remaining', '₹' + (_tb - _te).toLocaleString()],
+                    ['Utilization', (_tb > 0 ? Math.round((_te/_tb)*100) : 0) + '%']
+                ]
+            });
+        }
+    } catch (e) {}
+
+    REPORT_CATEGORIES.forEach(cat => {
             let items = (DB.get(REPORT_COLLECTIONS[cat.id]) || []).filter(i => dateFilter(i, from, to));
             if (cat.id === 'users') {
                 items = items.filter(u => u.department === deptName);
@@ -717,6 +746,41 @@ function exportExcel() {
                 addSheet(cat.label || cat.id, cols, rows);
             } catch (e) { console.warn('Sheet ' + cat.id + ' error:', e); }
         });
+
+        // ─── Budget Overview sheet ───
+        try {
+            var budgetConfig = DB.get('budgetConfig') || {};
+            if (budgetConfig.totalBudget > 0) {
+                var totalBudget = parseFloat(budgetConfig.totalBudget) || 0;
+                var totalExp = 0, matPurch = 0, maint = 0, ambFare = 0, projSpent = 0;
+                var allReceipts = DB.get('inventory_receipts') || [];
+                allReceipts.forEach(function(r) { matPurch += parseFloat(r.total) || 0; });
+                var allTrips = DB.get('ambulance_trips') || [];
+                allTrips.forEach(function(t) { ambFare += parseFloat(t.fare) || 0; });
+                var allProblems = DB.get('problems') || [];
+                allProblems.forEach(function(p) { maint += parseFloat(p.maintenanceCost || p.cost || 0) || 0; });
+                var allProjects = DB.get('projects') || [];
+                allProjects.forEach(function(p) { projSpent += parseFloat(p.spent) || 0; });
+                totalExp = matPurch + maint + ambFare + projSpent;
+                var remaining = totalBudget - totalExp;
+                var utilPct = totalBudget > 0 ? Math.round((totalExp / totalBudget) * 100) : 0;
+
+                var bdgCols = ['Metric', 'Amount (₹)'];
+                var bdgRows = [
+                    ['Fiscal Year', budgetConfig.fiscalYear || '-'],
+                    ['Total Budget', totalBudget.toFixed(2)],
+                    ['Maintenance Budget', parseFloat(budgetConfig.maintenanceBudget || 0).toFixed(2)],
+                    ['Material Purchase Cost', matPurch.toFixed(2)],
+                    ['Maintenance Cost', maint.toFixed(2)],
+                    ['Ambulance Fare Collected', ambFare.toFixed(2)],
+                    ['Project Spent', projSpent.toFixed(2)],
+                    ['Total Expense', totalExp.toFixed(2)],
+                    ['Remaining Budget', remaining.toFixed(2)],
+                    ['Utilization Rate', utilPct + '%']
+                ];
+                addSheet('Budget Overview', bdgCols, bdgRows);
+            }
+        } catch (e) { console.warn('Budget sheet error:', e); }
 
         // ─── Type-specific sheets ───
         try {

@@ -593,6 +593,7 @@ const APP = {
             'material-requests': renderMaterialRequests,
             suggestions: renderSuggestions,
             reports: renderReports,
+            budget: renderBudget,
             'employee-dashboard': renderEmployeeDashboard
         };
         if (renderers[mod]) {
@@ -627,7 +628,7 @@ const APP = {
                 const defaultRights = ['dashboard','users','departments','inventory','gate-security',
                     'projects','ambulance','problems','tasks','complaints',
                     'room-checklist','admissions','lost-found','checklists','admin-checklists',
-                    'material-requests','suggestions','employee-dashboard','reports'];
+                    'material-requests','suggestions','employee-dashboard','reports','budget'];
                 DB.set('featureRights', defaultRights);
             }
             const floors = DB.get('floorItems');

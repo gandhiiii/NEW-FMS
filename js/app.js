@@ -57,7 +57,8 @@ const Router = {
             { id: 'suggestions', label: 'Suggestions', icon: '💡', permission: 'suggestions' },
             { id: 'employee-dashboard', label: 'My Dashboard', icon: '📊', permission: 'employee-dashboard' },
             { id: 'checklists', label: 'Checklists', icon: '✅', permission: 'checklists' },
-            { id: 'reports', label: 'Reports', icon: '📊', permission: 'reports' }
+            { id: 'reports', label: 'Reports', icon: '📊', permission: 'reports' },
+            { id: 'budget', label: 'Budget', icon: '💰', permission: 'budget' }
         ];
         let html = '';
         items.forEach(item => {
@@ -88,7 +89,8 @@ const Router = {
             'admin-checklists': 'Admin Checklists', checklists: 'Checklists',
             'material-requests': 'Material Requests', suggestions: 'Suggestions',
             'employee-dashboard': 'My Dashboard',
-            reports: 'Reports'
+            reports: 'Reports',
+            budget: 'Budget Management'
         };
         document.getElementById('pageTitle').textContent = titles[module] || module;
         const content = document.getElementById('pageContent');
@@ -115,6 +117,7 @@ const Router = {
             'material-requests': renderMaterialRequests,
             suggestions: renderSuggestions,
             reports: renderReports,
+            budget: renderBudget,
             'employee-dashboard': renderEmployeeDashboard
         };
         if (renderers[module]) {
