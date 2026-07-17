@@ -354,15 +354,18 @@ function buildDeptReport(ctx) {
     const depts = dept ? [{ name: dept }] : (DB.get('departments') || []).filter(d => d.active !== false);
     const sections = [];
 
+    var bdgSec = buildBudgetSection();
+    if (bdgSec) sections.push(bdgSec);
+
+    var empSec = buildEmployeeSummarySection(ctx);
+    if (empSec) sections.push(empSec);
+
     depts.forEach(d => {
         const deptName = d.name;
         const deptUsers = (DB.get('users') || []).filter(u => u.department === deptName);
         const empNames = deptUsers.map(u => u.fullName);
         let totalItems = 0;
         const detail = [];
-
-    var bdgSec = buildBudgetSection();
-    if (bdgSec) sections.push(bdgSec);
 
     REPORT_CATEGORIES.forEach(cat => {
             let items = (DB.get(REPORT_COLLECTIONS[cat.id]) || []).filter(i => dateFilter(i, from, to));
@@ -432,6 +435,9 @@ function buildCategoryReport(ctx) {
 
     var bdgSec = buildBudgetSection();
     if (bdgSec) sections.push(bdgSec);
+
+    var empSec = buildEmployeeSummarySection(ctx);
+    if (empSec) sections.push(empSec);
 
     const cats = cat ? REPORT_CATEGORIES.filter(c => c.id === cat) : REPORT_CATEGORIES;
     cats.forEach(catItem => {
