@@ -625,60 +625,35 @@ function renderIndivResult(container, ctx) {
     }, 100);
 }
 
-/* ─── Export Excel (multi-sheet XML) ─── */
-
-function escXml(v) {
-    if (v === null || v === undefined) return '';
-    if (typeof v === 'object') v = String(v);
-    return String(v)
-        .replace(/[^\x09\x0A\x0D\x20-\uD7FF\uE000-\uFFFD]/g, '')
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function buildSheetXml(name, cols, rows) {
-    name = String(name).replace(/[\[\]*?\/\\:]/g, '').substring(0, 31);
-    var xml = '<ss:Worksheet ss:Name="' + escXml(name) + '"><ss:Table>\n';
-    if (cols && cols.length) {
-        xml += '<ss:Row>' + cols.map(function(c) { return '<ss:Cell><ss:Data ss:Type="String">' + escXml(c) + '</ss:Data></ss:Cell>'; }).join('') + '</ss:Row>\n';
-    }
-    rows.forEach(function(r) {
-        if (!r || !r.length) return;
-        xml += '<ss:Row>';
-        for (var i = 0; i < r.length; i++) {
-            xml += '<ss:Cell><ss:Data ss:Type="String">' + escXml(r[i]) + '</ss:Data></ss:Cell>';
-        }
-        xml += '</ss:Row>\n';
-    });
-    xml += '</ss:Table></ss:Worksheet>\n';
-    return xml;
-}
-
-function excelSheet(name, cols, rows) {
-    return buildSheetXml(name, cols, rows);
-}
+/* ─── Export Excel (SheetJS multi-sheet) ─── */
 
 function exportExcel() {
     try {
         if (!_lastReportData) { APP.notify('Generate a report first', 'error'); return; }
+        if (typeof XLSX === 'undefined') { APP.notify('Excel library not loaded. Refresh the page.', 'error'); return; }
+
         const { sections, type, from, to } = _lastReportData;
         const users = DB.get('users') || [];
         const employees = users.filter(u => !u.isSuperAdmin);
-        let sheets = '';
-        let sheetCount = 0;
+        var wb = XLSX.utils.book_new();
+        var sheetCount = 0;
 
         function addSheet(name, cols, rows) {
             try {
                 if (!rows || !rows.length) return;
-                const safe = rows.filter(r => r && r.length);
+                var safe = rows.filter(function(r) { return r && r.length; });
                 if (!safe.length) return;
-                sheets += excelSheet(name, cols || [], safe);
+                name = String(name).replace(/[\[\]*?\/\\:]/g, '').substring(0, 31);
+                var data = cols && cols.length ? [cols].concat(safe) : safe;
+                var ws = XLSX.utils.aoa_to_sheet(data);
+                XLSX.utils.book_append_sheet(wb, ws, name);
                 sheetCount++;
             } catch (e) { console.warn('Sheet skip [' + name + ']:', e); }
         }
 
         // ─── Dashboard / KPIs ───
         try {
-            const kpiData = buildOverallKPISection({ from, to });
+            var kpiData = buildOverallKPISection({ from: from, to: to });
             if (kpiData && kpiData.rows && kpiData.rows.length) {
                 addSheet('Dashboard KPIs', kpiData.cols, kpiData.rows);
             }
@@ -686,46 +661,50 @@ function exportExcel() {
 
         // ─── Employee Summary ───
         try {
-            const empRows = [];
-            employees.forEach(e => {
+            var empRows = [];
+            employees.forEach(function(e) {
                 try {
-                    const sec = buildEmpKPISection(e.fullName, { from, to });
+                    var sec = buildEmpKPISection(e.fullName, { from: from, to: to });
                     if (sec && sec.rows) {
-                        sec.rows.forEach(r => empRows.push([e.fullName || '', e.department || '', r[0] || '', r[1] || '', r[2] || '']));
+                        sec.rows.forEach(function(r) { empRows.push([e.fullName || '', e.department || '', r[0] || '', r[1] || '', r[2] || '']); });
                     }
                 } catch (ee) {}
             });
             addSheet('Employee Summary', ['Employee','Department','Category','Done/Total','Rate'], empRows);
         } catch (e) { console.warn('Emp summary error:', e); }
 
-        // ─── Admissions & Discharges (split) ───
+        // ─── Admissions & Discharges ───
         try {
-            const allAdmissions = (DB.get('admissions') || []).filter(i => dateFilter(i, from, to));
+            var allAdmissions = (DB.get('admissions') || []).filter(function(i) { return dateFilter(i, from, to); });
             if (allAdmissions.length) {
-                const f = v => v || '-';
-                const admRows = allAdmissions.filter(a => a.status === 'admitted').map(a => [f(a.patientName), f(a.type), f(a.roomNo || a.roomNumber), f(a.doctor), f(APP.formatDate(a.admissionDate || a.createdAt)), f(a.status)]);
+                var f = function(v) { return v || '-'; };
+                var admRows = allAdmissions.filter(function(a) { return a.status === 'admitted'; }).map(function(a) { return [f(a.patientName), f(a.type), f(a.roomNo || a.roomNumber), f(a.doctor), f(APP.formatDate(a.admissionDate || a.createdAt)), f(a.status)]; });
                 addSheet('Admissions', ['Patient','Type','Room','Doctor','Admitted','Status'], admRows);
-                const dcRows = allAdmissions.filter(a => a.status === 'discharged').map(a => [f(a.patientName), f(a.type), f(a.roomNo || a.roomNumber), f(a.doctor), f(APP.formatDate(a.admissionDate || a.createdAt)), f(APP.formatDate(a.dischargeDate))]);
+                var dcRows = allAdmissions.filter(function(a) { return a.status === 'discharged'; }).map(function(a) { return [f(a.patientName), f(a.type), f(a.roomNo || a.roomNumber), f(a.doctor), f(APP.formatDate(a.admissionDate || a.createdAt)), f(APP.formatDate(a.dischargeDate))]; });
                 addSheet('Discharges', ['Patient','Type','Room','Doctor','Admitted','Discharged'], dcRows);
             }
         } catch (e) { console.warn('Admission sheet error:', e); }
 
         // ─── Per-category sheets ───
-        REPORT_CATEGORIES.forEach(cat => {
+        REPORT_CATEGORIES.forEach(function(cat) {
             try {
                 if (cat.id === 'admissions') return;
-                const collectionKey = REPORT_COLLECTIONS[cat.id];
-                const items = (DB.get(collectionKey) || []).filter(i => dateFilter(i, from, to));
+                var collectionKey = REPORT_COLLECTIONS[cat.id];
+                var items = (DB.get(collectionKey) || []).filter(function(i) { return dateFilter(i, from, to); });
                 if (!items.length) return;
-                const cols = getColumns(cat.id);
-                let rows = getRows(cat.id, items);
-                const stCount = {};
-                items.forEach(i => { const s = i.status || 'N/A'; stCount[s] = (stCount[s] || 0) + 1; });
+                var cols = getColumns(cat.id);
+                var rows = getRows(cat.id, items);
+                var stCount = {};
+                items.forEach(function(i) { var s = i.status || 'N/A'; stCount[s] = (stCount[s] || 0) + 1; });
                 if (Object.keys(stCount).length > 1) {
-                    rows.push(Array(cols.length).fill(''));
-                    rows.push(['--- Status Summary ---']);
-                    Object.keys(stCount).forEach(k => {
-                        const row = Array(cols.length).fill('');
+                    var empty = [];
+                    for (var ei = 0; ei < cols.length; ei++) empty.push('');
+                    rows.push(empty);
+                    var hdr = ['--- Status Summary ---'];
+                    rows.push(hdr);
+                    Object.keys(stCount).forEach(function(k) {
+                        var row = [];
+                        for (var ri = 0; ri < cols.length; ri++) row.push('');
                         row[0] = k; row[1] = String(stCount[k]);
                         rows.push(row);
                     });
@@ -734,24 +713,24 @@ function exportExcel() {
             } catch (e) { console.warn('Sheet ' + cat.id + ' error:', e); }
         });
 
-        // ─── Report type specific sheets ───
+        // ─── Type-specific sheets ───
         try {
             if (type === 'department') {
-                const deptData = (DB.get('departments') || []).filter(d => d.active !== false);
-                deptData.forEach(d => {
+                var deptData = (DB.get('departments') || []).filter(function(d) { return d.active !== false; });
+                deptData.forEach(function(d) {
                     try {
-                        const dRows = users.filter(u => u.department === d.name).map(u => {
-                            const sec = buildEmpKPISection(u.fullName, { from, to });
+                        var dRows = users.filter(function(u) { return u.department === d.name; }).map(function(u) {
+                            var sec = buildEmpKPISection(u.fullName, { from: from, to: to });
                             if (!sec || !sec.rows || !sec.rows.length) return null;
-                            return [u.fullName || '', u.role || '', sec.rows.map(r => r[2]).join(' | ')];
+                            return [u.fullName || '', u.role || '', sec.rows.map(function(r) { return r[2]; }).join(' | ')];
                         }).filter(Boolean);
                         addSheet(d.name + ' Dept', ['Employee','Role','KPIs'], dRows);
                     } catch (ee) {}
                 });
             } else if (type === 'individual') {
-                employees.forEach(e => {
+                employees.forEach(function(e) {
                     try {
-                        const sec = buildEmpKPISection(e.fullName, { from, to });
+                        var sec = buildEmpKPISection(e.fullName, { from: from, to: to });
                         if (sec && sec.rows && sec.rows.length) {
                             addSheet(e.fullName.replace(/[\/\\*?]/g,' ').substring(0,31), sec.cols, sec.rows);
                         }
@@ -762,30 +741,7 @@ function exportExcel() {
 
         if (!sheetCount) { APP.notify('No data to export', 'error'); return; }
 
-        var html = '<html xmlns:o="urn:schemas-microsoft-com:office:office"\r\n' +
-            ' xmlns:x="urn:schemas-microsoft-com:office:excel"\r\n' +
-            ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\r\n' +
-            '<head><meta charset="UTF-8"><title>' + escXml(_lastReportTitle) + '</title>\r\n' +
-            '<!--[if gte mso 9]><xml>\r\n' +
-            '<ss:Workbook>\r\n' +
-            sheets +
-            '</ss:Workbook>\r\n' +
-            '<![endif]-->\r\n' +
-            '</head><body>\r\n' +
-            '<table><tr><td style="font-family:Arial;font-size:14px;padding:20px;">' + escXml(_lastReportTitle) + '<br><span style="font-size:11px;color:#888;">Generated ' + new Date().toLocaleString() + ' — ' + sheetCount + ' sheets. Open in Excel to see all tabs.</span></td></tr></table>\r\n' +
-            '</body></html>';
-
-        var blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
-        var url = URL.createObjectURL(blob);
-        var link = document.createElement('a');
-        link.href = url;
-        link.download = _lastReportTitle.replace(/\s+/g, '_') + '.xls';
-        document.body.appendChild(link);
-        link.click();
-        setTimeout(function() {
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-        }, 100);
+        XLSX.writeFile(wb, _lastReportTitle.replace(/\s+/g, '_') + '.xlsx');
         APP.notify('Excel downloaded with ' + sheetCount + ' sheets', 'success');
     } catch (e) {
         console.error('Export error:', e);
