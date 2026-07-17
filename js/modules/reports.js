@@ -629,8 +629,13 @@ function renderIndivResult(container, ctx) {
 
 function exportExcel() {
     try {
+        console.log('exportExcel called');
         if (!_lastReportData) { APP.notify('Generate a report first', 'error'); return; }
-        if (typeof XLSX === 'undefined') { APP.notify('Excel library not loaded. Refresh the page.', 'error'); return; }
+        if (typeof XLSX === 'undefined' || !XLSX || !XLSX.utils) {
+            console.error('XLSX not available');
+            APP.notify('Excel library not loaded. Refresh the page.', 'error');
+            return;
+        }
 
         const { sections, type, from, to } = _lastReportData;
         const users = DB.get('users') || [];
@@ -741,7 +746,18 @@ function exportExcel() {
 
         if (!sheetCount) { APP.notify('No data to export', 'error'); return; }
 
-        XLSX.writeFile(wb, _lastReportTitle.replace(/\s+/g, '_') + '.xlsx');
+        var wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        var blob = new Blob([wbout], { type: 'application/octet-stream' });
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = _lastReportTitle.replace(/\s+/g, '_') + '.xlsx';
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(function() {
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }, 100);
         APP.notify('Excel downloaded with ' + sheetCount + ' sheets', 'success');
     } catch (e) {
         console.error('Export error:', e);
