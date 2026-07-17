@@ -260,6 +260,63 @@ function buildEmpKPISection(empName, ctx) {
     } : null;
 }
 
+/* ─── Budget Section Helper ─── */
+
+function buildBudgetSection() {
+    try {
+        var cfg = DB.get('budgetConfig');
+        if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) return null;
+        var tb = parseFloat(cfg.totalBudget) || 0;
+        if (!tb) return null;
+        var me = 0, mc = 0, af = 0, ps = 0;
+        (DB.get('inventory_receipts') || []).forEach(function(r) { me += parseFloat(r.total) || 0; });
+        (DB.get('problems') || []).forEach(function(p) { mc += parseFloat(p.maintenanceCost || p.cost || 0) || 0; });
+        (DB.get('ambulance_trips') || []).forEach(function(t) { af += parseFloat(t.fare) || 0; });
+        (DB.get('projects') || []).forEach(function(p) { ps += parseFloat(p.spent) || 0; });
+        var te = me + mc + af + ps;
+        return {
+            title: 'Budget Overview',
+            total: 1,
+            cols: ['Metric', 'Amount (₹)'],
+            rows: [
+                ['Total Budget', '₹' + tb.toLocaleString()],
+                ['Material Purchase', '₹' + me.toLocaleString()],
+                ['Maintenance Cost', '₹' + mc.toLocaleString()],
+                ['Ambulance Fare', '₹' + af.toLocaleString()],
+                ['Project Spent', '₹' + ps.toLocaleString()],
+                ['Total Expense', '₹' + te.toLocaleString()],
+                ['Remaining', '₹' + Math.max(0, tb - te).toLocaleString()],
+                ['Utilization', (tb > 0 ? Math.round((te / tb) * 100) : 0) + '%']
+            ]
+        };
+    } catch (e) { return null; }
+}
+
+/* ─── Employee Summary Helper ─── */
+
+function buildEmployeeSummarySection(ctx) {
+    try {
+        var users = (DB.get('users') || []).filter(function(u) { return !u.isSuperAdmin; });
+        var rows = [];
+        users.forEach(function(u) {
+            var kpi = buildEmpKPISection(u.fullName, ctx);
+            if (!kpi || !kpi.rows || !kpi.rows.length) return;
+            var rates = [];
+            kpi.rows.forEach(function(r) {
+                if (r[2] && r[2].toString().includes('%')) rates.push(r[0] + ': ' + r[2]);
+            });
+            rows.push([u.fullName, u.department || '-', rates.join(' | ') || '-']);
+        });
+        if (!rows.length) return null;
+        return {
+            title: 'Employee Summary',
+            total: rows.length,
+            cols: ['Employee', 'Department', 'KPI Rates'],
+            rows: rows
+        };
+    } catch (e) { return null; }
+}
+
 /* ─── Overall Report ─── */
 
 function buildOverallReport(ctx) {
@@ -268,6 +325,12 @@ function buildOverallReport(ctx) {
 
     const kpiSection = buildOverallKPISection(ctx);
     if (kpiSection) sections.push(kpiSection);
+
+    var bdgSec = buildBudgetSection();
+    if (bdgSec) sections.push(bdgSec);
+
+    var empSec = buildEmployeeSummarySection(ctx);
+    if (empSec) sections.push(empSec);
 
     REPORT_CATEGORIES.forEach(cat => {
         const items = (DB.get(REPORT_COLLECTIONS[cat.id]) || []).filter(i => dateFilter(i, from, to));
@@ -298,34 +361,8 @@ function buildDeptReport(ctx) {
         let totalItems = 0;
         const detail = [];
 
-    // Budget section
-    try {
-        var bdgCfg = DB.get('budgetConfig') || {};
-        if (bdgCfg.totalBudget > 0) {
-            var _tb = parseFloat(bdgCfg.totalBudget) || 0;
-            var _me = 0, _mc = 0, _af = 0, _ps = 0;
-            (DB.get('inventory_receipts') || []).forEach(function(r) { _me += parseFloat(r.total) || 0; });
-            (DB.get('problems') || []).forEach(function(p) { _mc += parseFloat(p.maintenanceCost || p.cost || 0) || 0; });
-            (DB.get('ambulance_trips') || []).forEach(function(t) { _af += parseFloat(t.fare) || 0; });
-            (DB.get('projects') || []).forEach(function(p) { _ps += parseFloat(p.spent) || 0; });
-            var _te = _me + _mc + _af + _ps;
-            sections.push({
-                title: 'Budget Overview',
-                total: 1,
-                cols: ['Metric', 'Amount (₹)'],
-                rows: [
-                    ['Total Budget', '₹' + _tb.toLocaleString()],
-                    ['Material Purchase', '₹' + _me.toLocaleString()],
-                    ['Maintenance Cost', '₹' + _mc.toLocaleString()],
-                    ['Ambulance Fare', '₹' + _af.toLocaleString()],
-                    ['Project Spent', '₹' + _ps.toLocaleString()],
-                    ['Total Expense', '₹' + _te.toLocaleString()],
-                    ['Remaining', '₹' + (_tb - _te).toLocaleString()],
-                    ['Utilization', (_tb > 0 ? Math.round((_te/_tb)*100) : 0) + '%']
-                ]
-            });
-        }
-    } catch (e) {}
+    var bdgSec = buildBudgetSection();
+    if (bdgSec) sections.push(bdgSec);
 
     REPORT_CATEGORIES.forEach(cat => {
             let items = (DB.get(REPORT_COLLECTIONS[cat.id]) || []).filter(i => dateFilter(i, from, to));
@@ -366,6 +403,9 @@ function buildIndividualReport(ctx) {
     if (emp) employees = employees.filter(u => u.fullName === emp);
     const sections = [];
 
+    var bdgSec = buildBudgetSection();
+    if (bdgSec) sections.push(bdgSec);
+
     employees.forEach(e => {
         const empName = e.fullName;
         let totalItems = 0;
@@ -389,6 +429,9 @@ function buildIndividualReport(ctx) {
 function buildCategoryReport(ctx) {
     const { from, to, cat } = ctx;
     const sections = [];
+
+    var bdgSec = buildBudgetSection();
+    if (bdgSec) sections.push(bdgSec);
 
     const cats = cat ? REPORT_CATEGORIES.filter(c => c.id === cat) : REPORT_CATEGORIES;
     cats.forEach(catItem => {
@@ -592,26 +635,35 @@ function renderDeptResult(container, ctx) {
     destroyCharts(_reportCharts);
     _reportCharts = [];
     const { sections } = ctx;
-    let html = '<div class="card" style="margin-top:16px;"><div class="card-header"><h3>Department-wise Summary</h3></div>';
+    var deptSections = sections.filter(function(s) { return s.detail; });
+    var otherSections = sections.filter(function(s) { return !s.detail; });
+    var html = '';
+    otherSections.forEach(function(sec) {
+        if (!sec.cols || !sec.rows) return;
+        html += '<div class="card" style="margin-top:16px;"><div class="card-header"><h3>' + sec.title + '</h3></div>';
+        html += '<div class="table-responsive"><table><thead><tr>' + sec.cols.map(c => '<th>' + c + '</th>').join('') + '</tr></thead>';
+        html += '<tbody>' + sec.rows.map(r => '<tr>' + r.map(c => '<td>' + c + '</td>').join('') + '</tr>').join('') + '</tbody></table></div></div>';
+    });
+    html += '<div class="card" style="margin-top:16px;"><div class="card-header"><h3>Department-wise Summary</h3></div>';
     html += '<div class="table-responsive"><table><thead><tr><th>Department</th><th>Employees</th><th>Total Records</th><th>Breakdown</th></tr></thead><tbody>';
-    let grandTotal = 0;
-    sections.forEach(sec => {
+    var grandTotal = 0;
+    deptSections.forEach(function(sec) {
         grandTotal += sec.total;
-        html += '<tr><td><strong>' + sec.title + '</strong></td><td>' + (sec.deptUsers || 0) + '</td><td>' + sec.total + '</td><td style="font-size:12px;">' + sec.detail.map(d => d.category + ': ' + d.count).join(' | ') + '</td></tr>';
+        html += '<tr><td><strong>' + sec.title + '</strong></td><td>' + (sec.deptUsers || 0) + '</td><td>' + sec.total + '</td><td style="font-size:12px;">' + (sec.detail || []).map(function(d) { return d.category + ': ' + d.count; }).join(' | ') + '</td></tr>';
     });
     html += '<tr style="background:var(--bg);font-weight:600;"><td>Total</td><td></td><td>' + grandTotal + '</td><td></td></tr>';
     html += '</tbody></table></div>';
-    if (sections.length >= 2) {
+    if (deptSections.length >= 2) {
         html += '<div style="margin-top:16px;height:250px;"><canvas id="rptDeptChart"></canvas></div>';
     }
     html += '</div>';
     container.innerHTML = html;
-    if (sections.length >= 2) {
-        setTimeout(() => {
-            const c = renderChart('rptDeptChart','bar',sections.map(s => s.title),sections.map(s => s.total),'Total Records',false);
+    setTimeout(function() {
+        if (deptSections.length >= 2) {
+            var c = renderChart('rptDeptChart','bar',deptSections.map(function(s) { return s.title; }),deptSections.map(function(s) { return s.total; }),'Total Records',false);
             if (c) _reportCharts.push(c);
-        }, 100);
-    }
+        }
+    }, 100);
 }
 
 function renderIndivResult(container, ctx) {
@@ -632,6 +684,10 @@ function renderIndivResult(container, ctx) {
                 html += '<div style="height:200px;"><canvas id="rptEmpChart_' + si + '"></canvas></div>';
             }
             html += '</div>';
+        } else if (sec.cols && sec.rows) {
+            html += '<div class="table-responsive"><table><thead><tr>' + sec.cols.map(c => '<th>' + c + '</th>').join('') + '</tr></thead>';
+            html += '<tbody>' + sec.rows.map(r => '<tr>' + r.map(c => '<td>' + c + '</td>').join('') + '</tr>').join('') + '</tbody>';
+            html += '</table></div>';
         }
         html += '</div>';
     });
