@@ -222,12 +222,20 @@ tr:hover td { background: var(--primary-light); }
     font-weight: 600; font-size: 14px;
 }
 .page-content { padding: 24px; }
-.menu-toggle { display: none; background: none; border: none; font-size: 24px; cursor: pointer; color: var(--dark); }
+.menu-toggle { display: none; background: none; border: none; font-size: 24px; cursor: pointer; color: var(--dark); padding: 8px; min-width: 44px; min-height: 44px; }
+.sidebar-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    z-index: 99; opacity: 0; transition: opacity 0.3s;
+}
+.sidebar-overlay.show { display: block; opacity: 1; }
 @media (max-width: 768px) {
-    .sidebar { transform: translateX(-100%); }
+    .sidebar { transform: translateX(-100%); z-index: 100; }
     .sidebar.open { transform: translateX(0); }
+    .sidebar-overlay.show { display: block; }
     .main-content { margin-left: 0; }
     .menu-toggle { display: block; }
+    .sidebar-nav .nav-item { padding: 14px 20px; font-size: 15px; min-height: 48px; }
+    .sidebar-logo { padding: 18px 20px; font-size: 20px; }
     .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
     .search-box input { min-width: 150px; }
 }

@@ -3,12 +3,27 @@ const Router = {
     init() {
         const user = AUTH.currentUser();
         if (!user) { window.location.href = 'index.html'; return; }
+        var overlay = document.createElement('div');
+        overlay.className = 'sidebar-overlay';
+        overlay.id = 'sidebarOverlay';
+        document.body.appendChild(overlay);
+        overlay.onclick = function() {
+            document.getElementById('sidebar').classList.remove('open');
+            overlay.classList.remove('show');
+        };
         this.renderHeader();
         this.renderSidebar();
         const startModule = user.role === 'ambulance_employee' ? 'ambulance' : user.role === 'employee' ? 'employee-dashboard' : 'dashboard';
         this.navigate(startModule);
-        document.getElementById('menuToggle').onclick = () => {
-            document.getElementById('sidebar').classList.toggle('open');
+        document.getElementById('menuToggle').onclick = function() {
+            var sb = document.getElementById('sidebar');
+            var ov = document.getElementById('sidebarOverlay');
+            sb.classList.toggle('open');
+            if (sb.classList.contains('open')) {
+                ov.classList.add('show');
+            } else {
+                ov.classList.remove('show');
+            }
         };
     },
     renderHeader() {
@@ -78,6 +93,8 @@ const Router = {
         const navItem = document.querySelector(`.nav-item[data-module="${module}"]`);
         if (navItem) navItem.classList.add('active');
         document.getElementById('sidebar').classList.remove('open');
+        var ov = document.getElementById('sidebarOverlay');
+        if (ov) ov.classList.remove('show');
         const titles = {
             dashboard: 'Dashboard', users: 'User Management', departments: 'Departments', 'feature-rights': 'Feature Rights',
             inventory: 'Inventory Management',             'gate-security': 'Gate Security',
