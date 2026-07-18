@@ -600,7 +600,8 @@ const APP = {
             teams: renderTeams,
             'hod-dashboard': renderHodDashboard,
             'hod-audits': renderAllHodAudits,
-            'employee-dashboard': renderEmployeeDashboard
+            'employee-dashboard': renderEmployeeDashboard,
+            'quarterly-priorities': renderQuarterlyPriorities
         };
         if (renderers[mod]) {
             renderers[mod](content);
@@ -657,6 +658,9 @@ const APP = {
             if (!Array.isArray(DB.get('hod_audit')) || DB.get('hod_audit').length === 0) {
                 DB.set('hod_audit', []);
             }
+            if (!Array.isArray(DB.get('quarterly_priorities')) || DB.get('quarterly_priorities').length === 0) {
+                DB.set('quarterly_priorities', []);
+            }
             if (!Array.isArray(DB.get('reports')) || DB.get('reports').length === 0) {
                 DB.set('reports', []);
             }
@@ -666,7 +670,7 @@ const APP = {
                     'room-checklist','admissions','lost-found','checklists','admin-checklists',
                     'material-requests','suggestions','employee-dashboard','reports','budget','teams',
                     'employee-reports','budget-reports','dept-reports',
-                    'hod-audits'];
+                    'hod-audits','quarterly-priorities'];
                 DB.set('featureRights', defaultRights);
             }
             const floors = DB.get('floorItems');

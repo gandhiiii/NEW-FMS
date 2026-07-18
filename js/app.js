@@ -78,7 +78,8 @@ const Router = {
             { id: 'budget-reports', label: 'Budget Reports', icon: '💹', permission: 'budget' },
             { id: 'dept-reports', label: 'Department Reports', icon: '🏛️', permission: 'reports' },
             { id: 'teams', label: 'Teams', icon: '👥', permission: 'teams' },
-            { id: 'hod-audits', label: 'HOD Audits', icon: '📋', permission: 'dashboard' }
+            { id: 'hod-audits', label: 'HOD Audits', icon: '📋', permission: 'dashboard' },
+            { id: 'quarterly-priorities', label: 'Q-Priorities', icon: '📅', permission: 'quarterly-priorities' }
         ];
         let html = '';
         items.forEach(item => {
@@ -119,7 +120,8 @@ const Router = {
             'dept-reports': 'Department Reports',
             teams: 'Team Management',
             'hod-dashboard': 'HOD Dashboard',
-            'hod-audits': 'HOD Audits'
+            'hod-audits': 'HOD Audits',
+            'quarterly-priorities': 'Quarterly Priorities'
         };
         document.getElementById('pageTitle').textContent = titles[module] || module;
         const content = document.getElementById('pageContent');
@@ -153,7 +155,8 @@ const Router = {
             teams: renderTeams,
             'hod-dashboard': renderHodDashboard,
             'hod-audits': renderAllHodAudits,
-            'employee-dashboard': renderEmployeeDashboard
+            'employee-dashboard': renderEmployeeDashboard,
+            'quarterly-priorities': renderQuarterlyPriorities
         };
         if (renderers[module]) {
             content.innerHTML = '<div style="text-align:center;padding:40px;"><div class="spinner"></div>Loading...</div>';
