@@ -92,6 +92,7 @@ const Router = {
     navigate(module) {
         var u = AUTH.currentUser();
         if (module === 'dashboard' && u && u.role === 'employee') module = 'employee-dashboard';
+        if (module === 'dashboard' && u && u.role === 'hod') module = 'hod-dashboard';
         APP.currentModule = module;
         document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
         const navItem = document.querySelector(`.nav-item[data-module="${module}"]`);
@@ -115,7 +116,8 @@ const Router = {
             'employee-reports': 'Employee Reports',
             'budget-reports': 'Budget Reports',
             'dept-reports': 'Department Reports',
-            teams: 'Team Management'
+            teams: 'Team Management',
+            'hod-dashboard': 'HOD Dashboard'
         };
         document.getElementById('pageTitle').textContent = titles[module] || module;
         const content = document.getElementById('pageContent');
@@ -147,6 +149,7 @@ const Router = {
             'budget-reports': renderBudgetReports,
             'dept-reports': renderDeptReports,
             teams: renderTeams,
+            'hod-dashboard': renderHodDashboard,
             'employee-dashboard': renderEmployeeDashboard
         };
         if (renderers[module]) {

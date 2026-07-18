@@ -598,6 +598,7 @@ const APP = {
             'budget-reports': renderBudgetReports,
             'dept-reports': renderDeptReports,
             teams: renderTeams,
+            'hod-dashboard': renderHodDashboard,
             'employee-dashboard': renderEmployeeDashboard
         };
         if (renderers[mod]) {
@@ -639,6 +640,18 @@ const APP = {
             }
             if (!Array.isArray(DB.get('adminAudits')) || DB.get('adminAudits').length === 0) {
                 DB.set('adminAudits', []);
+            }
+            if (!Array.isArray(DB.get('leave_requests')) || DB.get('leave_requests').length === 0) {
+                DB.set('leave_requests', []);
+            }
+            if (!Array.isArray(DB.get('daily_material_usage')) || DB.get('daily_material_usage').length === 0) {
+                DB.set('daily_material_usage', []);
+            }
+            if (!Array.isArray(DB.get('daily_breakdown')) || DB.get('daily_breakdown').length === 0) {
+                DB.set('daily_breakdown', []);
+            }
+            if (!Array.isArray(DB.get('sub_inventory')) || DB.get('sub_inventory').length === 0) {
+                DB.set('sub_inventory', []);
             }
             if (!Array.isArray(DB.get('reports')) || DB.get('reports').length === 0) {
                 DB.set('reports', []);

@@ -205,7 +205,7 @@ function onRoleChange(select) {
     if (!grid) return;
     const allCbs = document.querySelectorAll('[name="permissions"]');
     const rolePerms = {
-        hod: ['dashboard','employee-dashboard','material-requests','suggestions','tasks','checklists','complaints','problems'],
+        hod: ['dashboard','employee-dashboard','material-requests','suggestions','tasks','checklists','complaints','problems','budget','reports','teams'],
         employee: ['employee-dashboard','material-requests','suggestions'],
         storekeeper: ['dashboard','inventory','material-requests','employee-dashboard'],
         ambulance_employee: ['ambulance']

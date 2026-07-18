@@ -23,10 +23,14 @@ function renderMatList() {
         for (var i = 0; i < all.length; i++) {
             var r = all[i];
             if (!r) continue;
-            if (user.role === 'admin' || user.role === 'hod') {
-                if (r.department && r.department !== user.department && user.role !== 'admin') continue;
+            if (user.role === 'admin') {
+                // admin sees all
+            } else if (user.role === 'hod') {
+                if (r.department !== user.department) continue;
+            } else if (user.role === 'storekeeper') {
+                if (r.hodStatus !== 'approved' && r.status !== 'hod_approved') continue;
             } else {
-                if (r.createdBy !== user.username) continue;
+                if (r.createdBy !== user.username && r.createdByName !== user.fullName) continue;
             }
             if (search && (r.title || '').toLowerCase().indexOf(search) < 0 && (r.reason || '').toLowerCase().indexOf(search) < 0) continue;
             requests.push(r);
@@ -53,11 +57,16 @@ function renderMatList() {
 
             var statusBadge = 'badge-warning';
             var statusText = 'Pending';
-            if (r.status === 'approved') { statusBadge = 'badge-success'; statusText = 'Approved'; }
+            if (r.status === 'hod_approved') { statusBadge = 'badge-primary'; statusText = 'HOD Approved'; }
+            else if (r.status === 'store_approved' || r.status === 'approved') { statusBadge = 'badge-success'; statusText = 'Store Approved'; }
+            else if (r.status === 'hod_rejected') { statusBadge = 'badge-danger'; statusText = 'HOD Rejected'; }
             else if (r.status === 'rejected') { statusBadge = 'badge-danger'; statusText = 'Rejected'; }
 
-            var canApprove = (user.role === 'admin' || user.role === 'hod') && r.status === 'pending' && (user.role === 'admin' || r.department === user.department);
-            var isOwner = r.createdBy === user.username;
+            var isPending = r.status === 'pending' && (!r.hodStatus || r.hodStatus === 'pending');
+            var isHodApproved = r.hodStatus === 'approved' || r.status === 'hod_approved';
+            var canApproveHod = (user.role === 'admin' || user.role === 'hod') && isPending && (user.role === 'admin' || r.department === user.department);
+            var canApproveStore = (user.role === 'admin' || user.role === 'storekeeper') && isHodApproved && r.storeStatus !== 'approved';
+            var isOwner = r.createdBy === user.username || r.createdByName === user.fullName;
 
             html += '<tr>'
                 + '<td><strong>' + (r.title || 'Request') + '</strong></td>'
@@ -69,9 +78,11 @@ function renderMatList() {
                 + (r.approvedBy ? '<br><span style="font-size:11px;color:var(--gray);">by ' + r.approvedBy + '</span>' : '')
                 + '</td>'
                 + '<td style="white-space:nowrap;">'
-                + (isOwner && r.status === 'pending' ? '<button class="btn btn-sm btn-danger" onclick="deleteMatReq(\'' + r.id + '\')">Del</button> ' : '')
-                + (canApprove ? '<button class="btn btn-sm btn-success" onclick="approveMatReq(\'' + r.id + '\')">Approve</button> '
-                    + '<button class="btn btn-sm btn-danger" onclick="rejectMatReq(\'' + r.id + '\')">Reject</button>' : '')
+                + (isOwner && isPending ? '<button class="btn btn-sm btn-danger" onclick="deleteMatReq(\'' + r.id + '\')">Del</button> ' : '')
+                + (canApproveHod ? '<button class="btn btn-sm btn-success" onclick="approveMatReq(\'' + r.id + '\',\'hod\')">HOD Approve</button> '
+                    + '<button class="btn btn-sm btn-danger" onclick="rejectMatReq(\'' + r.id + '\',\'hod\')">HOD Reject</button> ' : '')
+                + (canApproveStore ? '<button class="btn btn-sm btn-success" onclick="approveMatReq(\'' + r.id + '\',\'store\')">Store Approve</button> '
+                    + '<button class="btn btn-sm btn-danger" onclick="rejectMatReq(\'' + r.id + '\',\'store\')">Store Reject</button>' : '')
                 + '</td></tr>';
         }
 
@@ -201,24 +212,36 @@ function deleteMatReq(id) {
     });
 }
 
-function approveMatReq(id) {
+function approveMatReq(id, level) {
     var user = AUTH.currentUser();
-    DB.update('material_requests', id, {
-        status: 'approved',
-        approvedBy: user.fullName,
-        approvedAt: new Date().toISOString()
-    });
-    APP.notify('Request approved', 'success');
+    if (level === 'hod') {
+        DB.update('material_requests', id, {
+            hodStatus: 'approved',
+            status: 'hod_approved',
+            approvedBy: user.fullName,
+            approvedAt: new Date().toISOString()
+        });
+        APP.notify('HOD approved — sent to store', 'success');
+    } else {
+        DB.update('material_requests', id, {
+            storeStatus: 'approved',
+            status: 'store_approved',
+            storeApprovedBy: user.fullName,
+            storeApprovedAt: new Date().toISOString()
+        });
+        APP.notify('Store approved', 'success');
+    }
     renderMatList();
 }
 
-function rejectMatReq(id) {
+function rejectMatReq(id, level) {
     var user = AUTH.currentUser();
-    DB.update('material_requests', id, {
-        status: 'rejected',
-        approvedBy: user.fullName,
-        approvedAt: new Date().toISOString()
-    });
-    APP.notify('Request rejected', 'info');
+    if (level === 'hod') {
+        DB.update('material_requests', id, { hodStatus: 'rejected', status: 'hod_rejected' });
+        APP.notify('HOD rejected', 'info');
+    } else {
+        DB.update('material_requests', id, { storeStatus: 'rejected', status: 'store_rejected' });
+        APP.notify('Store rejected', 'info');
+    }
     renderMatList();
 }
