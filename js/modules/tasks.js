@@ -1,10 +1,18 @@
 function renderTasks(container) {
+    var user = AUTH.currentUser();
+    var isMgmt = user.role === 'admin' || user.role === 'hod' || user.isSuperAdmin;
     container.innerHTML = `
         <div class="flex-between mb-4">
             <div class="search-box">
                 <input type="text" class="form-control" id="taskSearch" placeholder="Search tasks..." oninput="renderTaskList()">
             </div>
-            <button class="btn btn-primary" onclick="showTaskForm()">+ Assign Task</button>
+            <div>
+                <button class="btn btn-primary" onclick="showTaskForm()">+ Assign Task</button>
+                ${isMgmt ? '<button class="btn btn-success" onclick="exportTaskReport()">⬇ Excel Report</button>' : ''}
+                ${isMgmt ? '<button class="btn btn-info" onclick="printTaskReport()">🖨 PDF Report</button>' : ''}
+                ${isMgmt ? '<button class="btn btn-success" onclick="shareTaskWhatsApp()" style="background:#25D366;">📱 WhatsApp</button>' : ''}
+                ${isMgmt ? '<button class="btn btn-primary" onclick="shareTaskEmail()">✉ Email</button>' : ''}
+            </div>
         </div>
 
         <div class="tabs">
@@ -55,10 +63,11 @@ function renderTaskList() {
 
     const tbody = document.getElementById('taskTableBody');
     if (!tbody) return;
-    const isAdmin = user.role === 'admin' || user.isSuperAdmin;
+    var isAdmin = user.role === 'admin' || user.isSuperAdmin;
+    var isHod = user.role === 'hod';
     tbody.innerHTML = filtered.slice().reverse().map(t => {
         let actions = '';
-        if (isAdmin) {
+        if (isAdmin || isHod) {
             actions = `
                 <button class="btn btn-sm btn-primary" onclick="editTask('${t.id}')">Edit</button>
                 <button class="btn btn-sm btn-danger" onclick="deleteTask('${t.id}')">Del</button>
@@ -193,4 +202,155 @@ function completeTask(id) {
         APP.notify('Task completed', 'success');
         renderTaskList();
     });
+}
+
+/* ─── Task Report & Share ─── */
+
+function getTaskReportData() {
+    var user = AUTH.currentUser();
+    var tasks = DB.get('tasks') || [];
+    if (user.role === 'hod') tasks = tasks.filter(function(t) { return t.department === user.department; });
+    tasks = tasks.slice().reverse();
+    var total = tasks.length;
+    var pending = tasks.filter(function(t) { return t.status === 'pending'; }).length;
+    var inProgress = tasks.filter(function(t) { return t.status === 'in-progress'; }).length;
+    var completed = tasks.filter(function(t) { return t.status === 'completed'; }).length;
+    var overdue = tasks.filter(function(t) { return t.status !== 'completed' && t.deadline && new Date(t.deadline) < new Date(); }).length;
+    var completionRate = total > 0 ? Math.round(completed / total * 100) : 0;
+    return { tasks: tasks, total: total, pending: pending, inProgress: inProgress, completed: completed, overdue: overdue, completionRate: completionRate };
+}
+
+function exportTaskReport() {
+    try {
+        if (typeof XLSX === 'undefined' || !XLSX || !XLSX.utils) {
+            APP.notify('Excel library not loaded', 'error');
+            return;
+        }
+        var data = getTaskReportData();
+        var wb = XLSX.utils.book_new();
+        var f = function(v) { return v || '-'; };
+
+        // Sheet 1: Summary
+        var sumCols = ['Metric', 'Value'];
+        var sumRows = [
+            ['Total Tasks', data.total],
+            ['Pending', data.pending],
+            ['In Progress', data.inProgress],
+            ['Completed', data.completed],
+            ['Overdue', data.overdue],
+            ['Completion Rate', data.completionRate + '%']
+        ];
+        var ws1 = XLSX.utils.aoa_to_sheet([sumCols].concat(sumRows));
+        XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
+
+        // Sheet 2: All Tasks
+        if (data.tasks.length) {
+            var tCols = ['Title', 'Assigned To', 'Department', 'Priority', 'Deadline', 'Status', 'Description'];
+            var tRows = data.tasks.map(function(t) {
+                return [f(t.title), f(t.assignedTo), f(t.department), f(t.priority), t.deadline ? APP.formatDate(t.deadline) : '-', f(t.status), f(t.description)];
+            });
+            var ws2 = XLSX.utils.aoa_to_sheet([tCols].concat(tRows));
+            XLSX.utils.book_append_sheet(wb, ws2, 'All Tasks');
+        }
+
+        var wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        var blob = new Blob([wbout], { type: 'application/octet-stream' });
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = 'Task_Report_' + new Date().toISOString().split('T')[0] + '.xlsx';
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(function() {
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }, 100);
+        APP.notify('Task Excel report downloaded', 'success');
+    } catch (e) {
+        console.error('exportTaskReport error:', e);
+        APP.notify('Export failed: ' + e.message, 'error');
+    }
+}
+
+function printTaskReport() {
+    var data = getTaskReportData();
+    var user = AUTH.currentUser();
+    var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Task Report</title>';
+    html += '<style>';
+    html += '*{box-sizing:border-box;}';
+    html += 'body{font-family:"Segoe UI",Arial,sans-serif;margin:30px;color:#222;}';
+    html += 'h1{font-size:24px;color:#1a73e8;}';
+    html += 'h2{font-size:16px;margin:20px 0 8px;color:#333;border-left:4px solid #1a73e8;padding-left:10px;}';
+    html += 'table{width:100%;border-collapse:collapse;margin-bottom:20px;font-size:11px;}';
+    html += 'th{background:#1a73e8;color:#fff;padding:8px 10px;text-align:left;}';
+    html += 'td{border:1px solid #ddd;padding:6px 10px;}';
+    html += 'tr:nth-child(even){background:#f8f9fa;}';
+    html += '.card{display:inline-block;margin:8px;padding:16px;background:#f0f4ff;border-radius:8px;text-align:center;min-width:120px;}';
+    html += '.num{font-size:28px;font-weight:700;color:#1a73e8;}';
+    html += '.lbl{font-size:11px;color:#888;}';
+    html += '@media print{body{margin:15mm;}th{background:#1a73e8!important;color:#fff!important;-webkit-print-color-adjust:exact;}}';
+    html += '</style></head><body>';
+    html += '<h1>Task Report</h1>';
+    html += '<div style="font-size:12px;color:#888;margin-bottom:16px;">Generated: ' + new Date().toLocaleString() + ' | ' + (user.department ? 'Department: ' + user.department : 'All Departments') + '</div>';
+    html += '<div style="text-align:center;">';
+    html += '<div class="card"><div class="num">' + data.total + '</div><div class="lbl">Total</div></div>';
+    html += '<div class="card"><div class="num" style="color:#fbbc04;">' + data.pending + '</div><div class="lbl">Pending</div></div>';
+    html += '<div class="card"><div class="num" style="color:#1a73e8;">' + data.inProgress + '</div><div class="lbl">In Progress</div></div>';
+    html += '<div class="card"><div class="num" style="color:#34a853;">' + data.completed + '</div><div class="lbl">Completed</div></div>';
+    html += '<div class="card"><div class="num" style="color:#ea4335;">' + data.overdue + '</div><div class="lbl">Overdue</div></div>';
+    html += '<div class="card"><div class="num" style="color:#7b1fa2;">' + data.completionRate + '%</div><div class="lbl">Rate</div></div>';
+    html += '</div>';
+    html += '<h2>All Tasks (' + data.tasks.length + ')</h2>';
+    html += '<table><thead><tr><th>Title</th><th>Assigned To</th><th>Priority</th><th>Deadline</th><th>Status</th></tr></thead><tbody>';
+    data.tasks.forEach(function(t) {
+        html += '<tr><td>' + t.title + '</td><td>' + (t.assignedTo || '-') + '</td><td>' + (t.priority || '-') + '</td><td>' + (t.deadline ? APP.formatDate(t.deadline) : '-') + '</td><td>' + (t.status || '-') + '</td></tr>';
+    });
+    html += '</tbody></table>';
+    html += '<div style="text-align:center;font-size:10px;color:#aaa;margin-top:30px;border-top:1px solid #eee;padding-top:10px;">HMS Task Report — Confidential</div>';
+    html += '</body></html>';
+
+    var w = window.open('_blank');
+    if (!w) { APP.notify('Please allow popups', 'error'); return; }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(function() { w.print(); }, 500);
+}
+
+function shareTaskWhatsApp() {
+    var data = getTaskReportData();
+    var text = '*Task Report*';
+    text += '\nTotal: ' + data.total + ' | Pending: ' + data.pending + ' | In Progress: ' + data.inProgress;
+    text += ' | Completed: ' + data.completed + ' | Overdue: ' + data.overdue;
+    text += '\nCompletion Rate: ' + data.completionRate + '%';
+    text += '\n\n*Task List:*\n';
+    data.tasks.slice(0, 15).forEach(function(t) {
+        var d = t.deadline ? APP.formatDate(t.deadline) : '-';
+        text += '\n- ' + t.title + ' (' + t.status + ') [' + d + ']';
+    });
+    if (data.tasks.length > 15) text += '\n... and ' + (data.tasks.length - 15) + ' more tasks';
+    text += '\n\nGenerated: ' + new Date().toLocaleString();
+    var url = 'https://wa.me/?text=' + encodeURIComponent(text);
+    window.open(url, '_blank');
+}
+
+function shareTaskEmail() {
+    var data = getTaskReportData();
+    var subject = 'Task Report - ' + new Date().toISOString().split('T')[0];
+    var body = 'Task Report\n';
+    body += 'Generated: ' + new Date().toLocaleString() + '\n\n';
+    body += 'Summary:\n';
+    body += '- Total Tasks: ' + data.total + '\n';
+    body += '- Pending: ' + data.pending + '\n';
+    body += '- In Progress: ' + data.inProgress + '\n';
+    body += '- Completed: ' + data.completed + '\n';
+    body += '- Overdue: ' + data.overdue + '\n';
+    body += '- Completion Rate: ' + data.completionRate + '%\n\n';
+    body += 'Task Details:\n';
+    data.tasks.slice(0, 20).forEach(function(t) {
+        body += t.title + ' | ' + (t.assignedTo || '-') + ' | ' + (t.status || '-') + ' | ' + (t.deadline ? APP.formatDate(t.deadline) : '-') + '\n';
+    });
+    if (data.tasks.length > 20) body += '\n... and ' + (data.tasks.length - 20) + ' more tasks';
+    body += '\n\nDownload full report from HMS dashboard.';
+    window.open('mailto:?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body), '_blank');
 }

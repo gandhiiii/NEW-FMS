@@ -62,8 +62,10 @@ function renderReports(container) {
         <div class="flex-between mb-4">
             <h2 style="font-size:18px;font-weight:700;">📊 Reports</h2>
             <div>
-                <button class="btn btn-success" onclick="exportExcel()" id="rptExportBtn" disabled>⬇ Export Excel</button>
-                <button class="btn btn-info" onclick="printReport()" id="rptPrintBtn" disabled>🖨 Print PDF</button>
+                <button class="btn btn-success" onclick="exportExcel()" id="rptExportBtn" disabled>⬇ Excel</button>
+                <button class="btn btn-info" onclick="printReport()" id="rptPrintBtn" disabled>🖨 PDF</button>
+                <button class="btn btn-success" onclick="shareReportViaWhatsApp()" id="rptWhatsAppBtn" disabled style="background:#25D366;">📱 WhatsApp</button>
+                <button class="btn btn-primary" onclick="shareReportViaEmail()" id="rptEmailBtn" disabled>✉ Email</button>
             </div>
         </div>
         <div class="card">
@@ -162,10 +164,10 @@ function generateReport() {
     if (!ctx.to) ctx.to = document.getElementById('rptTo') ? document.getElementById('rptTo').value : '';
 
     renderReportResult(container, ctx);
-    var eb = document.getElementById('rptExportBtn');
-    var pb = document.getElementById('rptPrintBtn');
-    if (eb) eb.disabled = false;
-    if (pb) pb.disabled = false;
+    ['rptExportBtn','rptPrintBtn','rptWhatsAppBtn','rptEmailBtn'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.disabled = false;
+    });
 }
 
 function dateFilter(item, from, to) {
@@ -1153,4 +1155,54 @@ function printReport() {
     w.document.close();
     w.focus();
     setTimeout(() => { w.print(); }, 500);
+}
+
+/* ─── Share Utilities (WhatsApp / Email) ─── */
+
+function shareViaWhatsApp(text) {
+    var url = 'https://wa.me/?text=' + encodeURIComponent(text);
+    window.open(url, '_blank');
+}
+
+function shareViaEmail(subject, body) {
+    var url = 'mailto:?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+    window.open(url, '_blank');
+}
+
+function shareReportViaWhatsApp() {
+    if (!_lastReportData) { APP.notify('Generate a report first', 'error'); return; }
+    var text = '*HMS Report: ' + _lastReportTitle + '*\n';
+    text += 'Generated: ' + new Date().toLocaleString() + '\n\n';
+    _lastReportData.sections.forEach(function(sec) {
+        if (sec.title === 'Key Performance Indicators' || sec.cols) {
+            text += '*' + sec.title + '*\n';
+            if (sec.rows) {
+                sec.rows.slice(0, 8).forEach(function(r) {
+                    text += r.join(' | ') + '\n';
+                });
+            }
+            text += '\n';
+        }
+    });
+    text += 'Download full report from HMS dashboard.';
+    shareViaWhatsApp(text);
+}
+
+function shareReportViaEmail() {
+    if (!_lastReportData) { APP.notify('Generate a report first', 'error'); return; }
+    var body = 'HMS Report: ' + _lastReportTitle + '\n';
+    body += 'Generated: ' + new Date().toLocaleString() + '\n\n';
+    _lastReportData.sections.forEach(function(sec) {
+        if (sec.title === 'Key Performance Indicators' || sec.cols) {
+            body += sec.title + '\n';
+            if (sec.rows) {
+                sec.rows.slice(0, 10).forEach(function(r) {
+                    body += r.join(' | ') + '\n';
+                });
+            }
+            body += '\n---\n';
+        }
+    });
+    body += '\nDownload full report from HMS dashboard.';
+    shareViaEmail('HMS Report: ' + _lastReportTitle, body);
 }
