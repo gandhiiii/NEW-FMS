@@ -302,6 +302,7 @@ function fixUserPermissions() {
         storekeeper: ['dashboard','inventory','material-requests','employee-dashboard'],
         ambulance_employee: ['ambulance']
     };
+    var currentUser = AUTH.currentUser();
     users.forEach(function(u) {
         if (u.isSuperAdmin || u.role === 'admin') return;
         var preset = rolePerms[u.role];
@@ -315,8 +316,16 @@ function fixUserPermissions() {
             (u.permissions || []).forEach(function(p) { if (merged.indexOf(p) === -1) merged.push(p); });
             preset.forEach(function(p) { if (merged.indexOf(p) === -1) merged.push(p); });
             DB.update('users', u.id, { permissions: merged });
+            if (currentUser && currentUser.id === u.id) {
+                currentUser.permissions = merged;
+                try { localStorage.setItem('hms_currentUser', JSON.stringify(currentUser)); } catch(e) {}
+            }
             changed = true;
         }
     });
-    if (changed) console.log('fixUserPermissions: updated ' + users.filter(function(u) { return !u.isSuperAdmin && u.role !== 'admin' && rolePerms[u.role]; }).length + ' users');
+    if (changed) {
+        if (window.Router && typeof Router.renderSidebar === 'function') {
+            Router.renderSidebar();
+        }
+    }
 }
