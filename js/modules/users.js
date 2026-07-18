@@ -239,6 +239,12 @@ function saveUser() {
         const updateData = { fullName: data.fullName, email: data.email, phone: data.phone, role: data.role, department: data.department, permissions: data.permissions };
         if (data.password) updateData.password = data.password;
         DB.update('users', data.id, updateData);
+        var cu = AUTH.currentUser();
+        if (cu && cu.id === data.id) {
+            Object.keys(updateData).forEach(function(k) { cu[k] = updateData[k]; });
+            try { localStorage.setItem('hms_currentUser', JSON.stringify(cu)); } catch(e) {}
+            if (window.Router && typeof Router.renderSidebar === 'function') Router.renderSidebar();
+        }
         APP.notify('User updated successfully', 'success');
     } else {
         if (!data.password) { APP.notify('Password is required', 'error'); return false; }
