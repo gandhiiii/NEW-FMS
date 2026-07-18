@@ -14,6 +14,7 @@ function renderBudget(container) {
         container.innerHTML =
             '<div class="flex-between mb-4">' +
                 '<h2 style="font-size:18px;font-weight:700;">\uD83D\uDCB0 Budget Management</h2>' +
+                '<button class="btn btn-success" onclick="downloadBudgetExcel()">\u2B07 Download Excel</button>' +
             '</div>' +
             '<div class="card">' +
                 '<div class="card-header"><h3>Set Total Budget</h3></div>' +
@@ -280,5 +281,144 @@ function renderExpenseBreakdown() {
         console.error('renderExpenseBreakdown error:', e);
         var el = document.getElementById('bdgExpenseTable');
         if (el) el.innerHTML = '<div class="empty-state">Error loading expenses</div>';
+    }
+}
+
+function downloadBudgetExcel() {
+    try {
+        if (typeof XLSX === 'undefined' || !XLSX || !XLSX.utils) {
+            APP.notify('Excel library not loaded. Refresh the page.', 'error');
+            return;
+        }
+        var config = DB.get('budgetConfig') || {};
+        if (Array.isArray(config)) config = {};
+        var totalBudget = parseFloat(config.totalBudget) || 0;
+        var fiscalYear = config.fiscalYear || (new Date().getFullYear() + '-' + (new Date().getFullYear() + 1));
+
+        var matPurch = 0, maint = 0, ambFare = 0, projSpent = 0;
+        var txItems = [];
+        var deptData = {};
+
+        (DB.get('inventory_receipts') || []).forEach(function(r) {
+            var t = parseFloat(r.total) || 0;
+            matPurch += t;
+            txItems.push({ date: r.createdAt, desc: (r.itemName || 'Item') + ' x' + (r.quantity || 0), amount: t, category: 'Material Purchase', dept: r.department || '-' });
+            var d = r.department || 'Unassigned';
+            if (!deptData[d]) deptData[d] = { material: 0, maintenance: 0, ambulance: 0, project: 0, total: 0 };
+            deptData[d].material += t;
+            deptData[d].total += t;
+        });
+
+        (DB.get('problems') || []).forEach(function(p) {
+            var c = parseFloat(p.maintenanceCost || p.cost || 0) || 0;
+            maint += c;
+            if (c > 0) {
+                txItems.push({ date: p.createdAt, desc: p.title || 'Maintenance', amount: c, category: 'Maintenance', dept: p.area || p.department || '-' });
+                var d = p.area || p.department || 'Unassigned';
+                if (!deptData[d]) deptData[d] = { material: 0, maintenance: 0, ambulance: 0, project: 0, total: 0 };
+                deptData[d].maintenance += c;
+                deptData[d].total += c;
+            }
+        });
+
+        (DB.get('ambulance_trips') || []).forEach(function(t) {
+            var f = parseFloat(t.fare) || 0;
+            ambFare += f;
+            if (f > 0) {
+                txItems.push({ date: t.createdAt, desc: 'Trip: ' + (t.patientName || '-'), amount: f, category: 'Ambulance Fare', dept: 'Ambulance' });
+                var d = 'Ambulance';
+                if (!deptData[d]) deptData[d] = { material: 0, maintenance: 0, ambulance: 0, project: 0, total: 0 };
+                deptData[d].ambulance += f;
+                deptData[d].total += f;
+            }
+        });
+
+        (DB.get('projects') || []).forEach(function(p) {
+            var s = parseFloat(p.spent) || 0;
+            projSpent += s;
+            if (s > 0) {
+                txItems.push({ date: p.startDate || p.createdAt, desc: p.title || 'Project', amount: s, category: 'Project Spent', dept: p.department || '-' });
+                var d = p.department || 'Unassigned';
+                if (!deptData[d]) deptData[d] = { material: 0, maintenance: 0, ambulance: 0, project: 0, total: 0 };
+                deptData[d].project += s;
+                deptData[d].total += s;
+            }
+        });
+
+        var totalExpense = matPurch + maint + ambFare + projSpent;
+        var remaining = Math.max(0, totalBudget - totalExpense);
+        var utilPct = totalBudget > 0 ? Math.round((totalExpense / totalBudget) * 100) : 0;
+
+        var wb = XLSX.utils.book_new();
+        var f = function(v) { return v || '-'; };
+
+        // Sheet 1: Budget Overview
+        var ovCols = ['Metric', 'Amount (\u20B9)'];
+        var ovRows = [
+            ['Fiscal Year', fiscalYear],
+            ['Total Budget', totalBudget.toFixed(2)],
+            ['', ''],
+            ['--- Expenses ---', ''],
+            ['Material Purchase', matPurch.toFixed(2)],
+            ['Maintenance Cost', maint.toFixed(2)],
+            ['Ambulance Fare', ambFare.toFixed(2)],
+            ['Project Spent', projSpent.toFixed(2)],
+            ['Total Expense', totalExpense.toFixed(2)],
+            ['', ''],
+            ['Remaining Budget', remaining.toFixed(2)],
+            ['Utilization Rate', utilPct + '%'],
+            ['Budget Status', utilPct > 80 ? 'Over-utilized' : (utilPct > 50 ? 'Moderate' : 'Under-utilized')]
+        ];
+        var ws1 = XLSX.utils.aoa_to_sheet([ovCols].concat(ovRows));
+        XLSX.utils.book_append_sheet(wb, ws1, 'Budget Overview');
+
+        // Sheet 2: Department-wise Budget
+        var deptKeys = Object.keys(deptData).sort();
+        if (deptKeys.length) {
+            var dCols = ['Department', 'Material Purchase', 'Maintenance', 'Ambulance Fare', 'Project Spent', 'Total'];
+            var dRows = deptKeys.map(function(k) {
+                var d = deptData[k];
+                return [k, d.material.toFixed(2), d.maintenance.toFixed(2), d.ambulance.toFixed(2), d.project.toFixed(2), d.total.toFixed(2)];
+            });
+            var totalRow = ['TOTAL',
+                deptKeys.reduce(function(s, k) { return s + deptData[k].material; }, 0).toFixed(2),
+                deptKeys.reduce(function(s, k) { return s + deptData[k].maintenance; }, 0).toFixed(2),
+                deptKeys.reduce(function(s, k) { return s + deptData[k].ambulance; }, 0).toFixed(2),
+                deptKeys.reduce(function(s, k) { return s + deptData[k].project; }, 0).toFixed(2),
+                deptKeys.reduce(function(s, k) { return s + deptData[k].total; }, 0).toFixed(2)
+            ];
+            dRows.push([]);
+            dRows.push(totalRow);
+            var ws2 = XLSX.utils.aoa_to_sheet([dCols].concat(dRows));
+            XLSX.utils.book_append_sheet(wb, ws2, 'Department-wise');
+        }
+
+        // Sheet 3: Transaction Log
+        if (txItems.length) {
+            txItems.sort(function(a, b) { return (a.date || '') < (b.date || '') ? 1 : -1; });
+            var tCols = ['Date', 'Description', 'Category', 'Department', 'Amount (\u20B9)'];
+            var tRows = txItems.map(function(i) {
+                return [APP.formatDate(i.date) || '-', i.desc, i.category, i.dept, i.amount.toFixed(2)];
+            });
+            var ws3 = XLSX.utils.aoa_to_sheet([tCols].concat(tRows));
+            XLSX.utils.book_append_sheet(wb, ws3, 'Transactions');
+        }
+
+        var wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        var blob = new Blob([wbout], { type: 'application/octet-stream' });
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = 'Budget_Report_' + fiscalYear.replace(/[\/\\]/g, '-') + '.xlsx';
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(function() {
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }, 100);
+        APP.notify('Budget Excel downloaded', 'success');
+    } catch (e) {
+        console.error('downloadBudgetExcel error:', e);
+        APP.notify('Download failed: ' + e.message, 'error');
     }
 }
