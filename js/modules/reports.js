@@ -51,8 +51,9 @@ const REPORT_COLLECTIONS = {
 function renderReports(container) {
     const user = AUTH.currentUser();
     const isAdmin = user.role === 'admin' || user.isSuperAdmin;
-    if (!isAdmin) {
-        container.innerHTML = '<div class="empty-state">Access restricted to admin only</div>';
+    const isHod = user.role === 'hod';
+    if (!isAdmin && !isHod) {
+        container.innerHTML = '<div class="empty-state">Access restricted to admin and HODs only</div>';
         return;
     }
     var now = new Date();
@@ -60,7 +61,7 @@ function renderReports(container) {
     var today = now.toISOString().split('T')[0];
     container.innerHTML = `
         <div class="flex-between mb-4">
-            <h2 style="font-size:18px;font-weight:700;">📊 Reports</h2>
+            <h2 style="font-size:18px;font-weight:700;">📊 Reports ${isHod ? '(Department View)' : ''}</h2>
             <div>
                 <button class="btn btn-success" onclick="exportExcel()" id="rptExportBtn" disabled>⬇ Excel</button>
                 <button class="btn btn-info" onclick="printReport()" id="rptPrintBtn" disabled>🖨 PDF</button>
@@ -122,22 +123,40 @@ let _lastReportData = null;
 let _lastReportTitle = '';
 
 function updateReportFilters() {
-    const type = document.getElementById('rptType').value;
+    const user = AUTH.currentUser();
+    const isHod = user.role === 'hod';
+    const typeEl = document.getElementById('rptType');
+    if (isHod && typeEl) { typeEl.value = 'department'; typeEl.disabled = true; }
+    const type = typeEl ? typeEl.value : 'department';
     document.getElementById('rptDeptGroup').style.display = type === 'department' || type === 'individual' ? 'block' : 'none';
     document.getElementById('rptEmpGroup').style.display = type === 'individual' ? 'block' : 'none';
     document.getElementById('rptCatGroup').style.display = type === 'category' ? 'block' : 'none';
 }
 
 function getFilteredData() {
-    const type = document.getElementById('rptType').value;
-    const dept = document.getElementById('rptDept')?.value || '';
-    const emp = document.getElementById('rptEmp')?.value || '';
-    const cat = document.getElementById('rptCategory')?.value || '';
-    const from = document.getElementById('rptFrom').value;
-    const to = document.getElementById('rptTo').value;
+    const user = AUTH.currentUser();
+    const isHod = user.role === 'hod';
+    const typeEl = document.getElementById('rptType');
+    const deptEl = document.getElementById('rptDept');
+    const empEl = document.getElementById('rptEmp');
+    const catEl = document.getElementById('rptCategory');
+    let type = typeEl ? typeEl.value : 'overall';
+    let dept = deptEl ? deptEl.value : '';
+    let emp = empEl ? empEl.value : '';
+    let cat = catEl ? catEl.value : '';
+    const from = document.getElementById('rptFrom') ? document.getElementById('rptFrom').value : '';
+    const to = document.getElementById('rptTo') ? document.getElementById('rptTo').value : '';
+
+    if (isHod) {
+        dept = user.department || '';
+        if (typeEl) typeEl.value = 'department';
+        if (deptEl) { deptEl.value = dept; deptEl.disabled = true; }
+        type = 'department';
+        updateReportFilters();
+    }
 
     const users = DB.get('users') || [];
-    const employees = users.filter(u => !u.isSuperAdmin);
+    const employees = users.filter(u => !u.isSuperAdmin && (!dept || u.department === dept));
 
     const result = { type, dept, emp, cat, from, to, sections: [], users, employees };
     return result;

@@ -104,6 +104,7 @@ function showTaskForm(task) {
         assignableUsers = assignableUsers.filter(u => u.department === user.department && u.role !== 'admin');
         if (task) assignableUsers = assignableUsers.concat(users.filter(u => u.fullName === task.assignedTo));
     }
+    var userDept = user.department || '';
     const form = `
         <form id="taskForm">
             <input type="hidden" name="id" value="${task?.id || ''}">
@@ -114,19 +115,16 @@ function showTaskForm(task) {
                 </div>
                 <div class="form-group">
                     <label>Assigned To *</label>
-                    <select name="assignedTo" class="form-control" required>
+                    <select name="assignedTo" class="form-control" required onchange="autoSetTaskDept()">
                         <option value="">Select Employee</option>
                         ${assignableUsers.map(u =>
-                            `<option value="${u.fullName}" ${task?.assignedTo === u.fullName ? 'selected' : ''}>${u.fullName} (${u.role})</option>`
+                            `<option value="${u.fullName}" data-dept="${(u.department || '').replace(/"/g,'&quot;')}" ${task?.assignedTo === u.fullName ? 'selected' : ''}>${u.fullName} (${u.role} - ${u.department || ''})</option>`
                         ).join('')}
                     </select>
                 </div>
                 <div class="form-group">
                     <label>Department</label>
-                    <select name="department" class="form-control">
-                        <option value="">Select</option>
-                        ${depts.map(d => `<option value="${d.name}" ${task?.department === d.name ? 'selected' : ''}>${d.name}</option>`).join('')}
-                    </select>
+                    <input type="text" name="department" id="taskDeptInput" class="form-control" value="${task?.department || userDept}" readonly style="background:#f5f5f5;">
                 </div>
                 <div class="form-group">
                     <label>Deadline</label>
@@ -159,10 +157,15 @@ function showTaskForm(task) {
 }
 
 function saveTask() {
+    const user = AUTH.currentUser();
     const data = getFormData('taskForm');
     if (!data.title || !data.assignedTo) {
         APP.notify('Title and assignee required', 'error'); return;
     }
+    var assignedUser = (DB.get('users') || []).find(function(u) { return u.fullName === data.assignedTo; });
+    data.department = data.department || (assignedUser ? assignedUser.department : user.department) || '';
+    if (!data.department) { APP.notify('Could not determine department', 'error'); return; }
+    data.createdBy = user.fullName;
     if (data.id) {
         DB.update('tasks', data.id, data);
         APP.notify('Task updated', 'success');
@@ -171,6 +174,16 @@ function saveTask() {
         APP.notify('Task assigned successfully', 'success');
     }
     renderTaskList();
+}
+
+function autoSetTaskDept() {
+    var sel = document.getElementById('taskForm') ? document.querySelector('[name="assignedTo"]') : null;
+    var deptInput = document.getElementById('taskDeptInput');
+    if (!sel || !deptInput) return;
+    var opt = sel.options[sel.selectedIndex];
+    if (opt && opt.value) {
+        deptInput.value = opt.getAttribute('data-dept') || '';
+    }
 }
 
 function editTask(id) {

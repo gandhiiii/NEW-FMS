@@ -13,11 +13,23 @@ function renderMaterialRequests(container) {
     renderMatList();
 }
 
+function getMatStatusInfo(r) {
+    if (r.status === 'fulfilled') return { badge: 'badge-success', text: 'Fulfilled \u2713' };
+    if (r.status === 'partial_fulfilled') return { badge: 'badge-warning', text: 'Partial Fulfilled' };
+    if (r.status === 'store_approved' || r.status === 'approved') return { badge: 'badge-success', text: 'Store Approved' };
+    if (r.status === 'facility_approved') return { badge: 'badge-primary', text: 'Facility Approved' };
+    if (r.status === 'hod_approved') return { badge: 'badge-primary', text: 'HOD Approved' };
+    if (r.status === 'hod_rejected') return { badge: 'badge-danger', text: 'HOD Rejected' };
+    if (r.status === 'facility_rejected') return { badge: 'badge-danger', text: 'Facility Rejected' };
+    if (r.status === 'store_rejected' || r.status === 'rejected') return { badge: 'badge-danger', text: 'Rejected' };
+    return { badge: 'badge-warning', text: 'Pending' };
+}
+
 function renderMatList() {
     try {
         var user = AUTH.currentUser();
         var all = DB.get('material_requests') || [];
-        var search = (document.getElementById('matSearch')?.value || '').toLowerCase();
+        var search = (document.getElementById('matSearch') ? document.getElementById('matSearch').value : '').toLowerCase();
 
         var requests = [];
         for (var i = 0; i < all.length; i++) {
@@ -26,11 +38,11 @@ function renderMatList() {
             if (user.role === 'admin') {
                 // admin sees all
             } else if (user.role === 'hod') {
-                if (r.department !== user.department) continue;
+                if (r.department !== user.department && r.status !== 'pending') continue;
             } else if (user.role === 'storekeeper') {
-                if (r.hodStatus !== 'approved' && r.status !== 'hod_approved') continue;
+                if (r.status !== 'facility_approved' && r.status !== 'store_approved' && r.status !== 'hod_approved') continue;
             } else {
-                if (r.createdBy !== user.username && r.createdByName !== user.fullName) continue;
+                if (r.createdBy !== user.fullName) continue;
             }
             if (search && (r.title || '').toLowerCase().indexOf(search) < 0 && (r.reason || '').toLowerCase().indexOf(search) < 0) continue;
             requests.push(r);
@@ -55,18 +67,16 @@ function renderMatList() {
                 itemStr += items[j].name + ' x' + items[j].qty + (items[j].unit || '') + '<br>';
             }
 
-            var statusBadge = 'badge-warning';
-            var statusText = 'Pending';
-            if (r.status === 'hod_approved') { statusBadge = 'badge-primary'; statusText = 'HOD Approved'; }
-            else if (r.status === 'store_approved' || r.status === 'approved') { statusBadge = 'badge-success'; statusText = 'Store Approved'; }
-            else if (r.status === 'hod_rejected') { statusBadge = 'badge-danger'; statusText = 'HOD Rejected'; }
-            else if (r.status === 'rejected') { statusBadge = 'badge-danger'; statusText = 'Rejected'; }
-
+            var si = getMatStatusInfo(r);
             var isPending = r.status === 'pending' && (!r.hodStatus || r.hodStatus === 'pending');
             var isHodApproved = r.hodStatus === 'approved' || r.status === 'hod_approved';
-            var canApproveHod = (user.role === 'admin' || user.role === 'hod') && isPending && (user.role === 'admin' || r.department === user.department);
-            var canApproveStore = (user.role === 'admin' || user.role === 'storekeeper') && isHodApproved && r.storeStatus !== 'approved';
-            var isOwner = r.createdBy === user.username || r.createdByName === user.fullName;
+            var isFacilityApproved = r.facilityStatus === 'approved' || r.status === 'facility_approved';
+            var canApproveHod = (user.role === 'admin' || (user.role === 'hod' && r.department === user.department)) && isPending;
+            var canApproveFacility = (user.role === 'admin' || user.role === 'hod') && isHodApproved && r.facilityStatus !== 'approved' && r.facilityStatus !== 'rejected';
+            var canApproveStore = (user.role === 'admin' || user.role === 'storekeeper') && isFacilityApproved && r.storeStatus !== 'approved';
+            var canFulfillStore = (user.role === 'admin' || user.role === 'storekeeper') && r.storeStatus === 'approved' && r.status !== 'fulfilled' && r.status !== 'partial_fulfilled';
+            var canCloseCreator = r.createdBy === user.fullName && (r.status === 'store_approved' || r.status === 'approved') && r.fulfilledAt;
+            var isOwner = r.createdBy === user.fullName;
 
             html += '<tr>'
                 + '<td><strong>' + (r.title || 'Request') + '</strong></td>'
@@ -74,15 +84,22 @@ function renderMatList() {
                 + '<td>' + (r.department || '-') + '</td>'
                 + '<td>' + (r.createdBy || '-') + '</td>'
                 + '<td>' + APP.formatDate(r.createdAt) + '</td>'
-                + '<td><span class="badge ' + statusBadge + '">' + statusText + '</span>'
-                + (r.approvedBy ? '<br><span style="font-size:11px;color:var(--gray);">by ' + r.approvedBy + '</span>' : '')
+                + '<td><span class="badge ' + si.badge + '">' + si.text + '</span>'
+                + (r.approvedBy ? '<br><span style="font-size:11px;color:var(--gray);">HOD: ' + r.approvedBy + '</span>' : '')
+                + (r.facilityApprovedBy ? '<br><span style="font-size:11px;color:var(--gray);">Facility: ' + r.facilityApprovedBy + '</span>' : '')
+                + (r.storeApprovedBy ? '<br><span style="font-size:11px;color:var(--gray);">Store: ' + r.storeApprovedBy + '</span>' : '')
+                + (r.fulfilledBy ? '<br><span style="font-size:11px;color:var(--gray);">Fulfilled: ' + r.fulfilledBy + '</span>' : '')
                 + '</td>'
                 + '<td style="white-space:nowrap;">'
                 + (isOwner && isPending ? '<button class="btn btn-sm btn-danger" onclick="deleteMatReq(\'' + r.id + '\')">Del</button> ' : '')
-                + (canApproveHod ? '<button class="btn btn-sm btn-success" onclick="approveMatReq(\'' + r.id + '\',\'hod\')">HOD Approve</button> '
-                    + '<button class="btn btn-sm btn-danger" onclick="rejectMatReq(\'' + r.id + '\',\'hod\')">HOD Reject</button> ' : '')
-                + (canApproveStore ? '<button class="btn btn-sm btn-success" onclick="approveMatReq(\'' + r.id + '\',\'store\')">Store Approve</button> '
-                    + '<button class="btn btn-sm btn-danger" onclick="rejectMatReq(\'' + r.id + '\',\'store\')">Store Reject</button>' : '')
+                + (canApproveHod ? '<button class="btn btn-sm btn-success" onclick="approveMatReq(\'' + r.id + '\',\'hod\')">\u2713 HOD</button> '
+                    + '<button class="btn btn-sm btn-danger" onclick="rejectMatReq(\'' + r.id + '\',\'hod\')">\u2717 HOD</button> ' : '')
+                + (canApproveFacility ? '<button class="btn btn-sm btn-success" onclick="approveMatReq(\'' + r.id + '\',\'facility\')">\u2713 Facility</button> '
+                    + '<button class="btn btn-sm btn-danger" onclick="rejectMatReq(\'' + r.id + '\',\'facility\')">\u2717 Facility</button> ' : '')
+                + (canApproveStore ? '<button class="btn btn-sm btn-success" onclick="approveMatReq(\'' + r.id + '\',\'store\')">\u2713 Store</button> '
+                    + '<button class="btn btn-sm btn-danger" onclick="rejectMatReq(\'' + r.id + '\',\'store\')">\u2717 Store</button> ' : '')
+                + (canFulfillStore ? '<button class="btn btn-sm btn-info" onclick="fulfillMatReq(\'' + r.id + '\')">Fulfill</button> ' : '')
+                + (canCloseCreator ? '<button class="btn btn-sm btn-success" onclick="closeMatReq(\'' + r.id + '\')">\u2713 Close</button> ' : '')
                 + '</td></tr>';
         }
 
@@ -168,9 +185,9 @@ function addMatCustomItem() {
 function saveMatReq() {
     var form = document.getElementById('matForm');
     if (!form) return false;
-    var title = (form.querySelector('[name="title"]')?.value || '').trim();
-    var department = form.querySelector('[name="department"]')?.value || '';
-    var reason = form.querySelector('[name="reason"]')?.value || '';
+    var title = (form.querySelector('[name="title"]') ? form.querySelector('[name="title"]').value : '').trim();
+    var department = form.querySelector('[name="department"]') ? form.querySelector('[name="department"]').value : '';
+    var reason = form.querySelector('[name="reason"]') ? form.querySelector('[name="reason"]').value : '';
 
     if (!title) { APP.notify('Enter a title', 'error'); return false; }
 
@@ -178,9 +195,9 @@ function saveMatReq() {
     var selRows = document.querySelectorAll('.mat-item-row');
     for (var i = 0; i < selRows.length; i++) {
         var row = selRows[i];
-        var name = row.querySelector('.mat-item-select')?.value || '';
-        var qty = parseInt(row.querySelector('.mat-item-qty')?.value) || 1;
-        var unit = row.querySelector('.mat-item-unit')?.value || 'pcs';
+        var name = row.querySelector('.mat-item-select') ? row.querySelector('.mat-item-select').value : '';
+        var qty = parseInt(row.querySelector('.mat-item-qty') ? row.querySelector('.mat-item-qty').value : 1) || 1;
+        var unit = row.querySelector('.mat-item-unit') ? row.querySelector('.mat-item-unit').value : 'pcs';
         if (name) items.push({ name: name, qty: qty, unit: unit });
     }
     for (var i = 0; i < matCustomItems.length; i++) {
@@ -196,11 +213,24 @@ function saveMatReq() {
         reason: reason,
         items: items,
         status: 'pending',
-        createdBy: user.username,
-        createdByName: user.fullName
+        hodStatus: 'pending',
+        facilityStatus: 'pending',
+        storeStatus: 'pending',
+        createdBy: user.fullName,
+        createdByName: user.fullName,
+        approvedBy: '',
+        approvedAt: '',
+        facilityApprovedBy: '',
+        facilityApprovedAt: '',
+        storeApprovedBy: '',
+        storeApprovedAt: '',
+        fulfilledBy: '',
+        fulfilledAt: '',
+        closedBy: '',
+        closedAt: ''
     });
     matCustomItems = [];
-    APP.notify('Request submitted', 'success');
+    APP.notify('Request submitted — pending HOD approval', 'success');
     renderMatList();
     return true;
 }
@@ -221,7 +251,15 @@ function approveMatReq(id, level) {
             approvedBy: user.fullName,
             approvedAt: new Date().toISOString()
         });
-        APP.notify('HOD approved — sent to store', 'success');
+        APP.notify('HOD approved — sent to Facility HOD', 'success');
+    } else if (level === 'facility') {
+        DB.update('material_requests', id, {
+            facilityStatus: 'approved',
+            status: 'facility_approved',
+            facilityApprovedBy: user.fullName,
+            facilityApprovedAt: new Date().toISOString()
+        });
+        APP.notify('Facility approved — sent to Store', 'success');
     } else {
         DB.update('material_requests', id, {
             storeStatus: 'approved',
@@ -229,19 +267,43 @@ function approveMatReq(id, level) {
             storeApprovedBy: user.fullName,
             storeApprovedAt: new Date().toISOString()
         });
-        APP.notify('Store approved', 'success');
+        APP.notify('Store approved — ready for fulfillment', 'success');
     }
     renderMatList();
 }
 
 function rejectMatReq(id, level) {
-    var user = AUTH.currentUser();
     if (level === 'hod') {
         DB.update('material_requests', id, { hodStatus: 'rejected', status: 'hod_rejected' });
         APP.notify('HOD rejected', 'info');
+    } else if (level === 'facility') {
+        DB.update('material_requests', id, { facilityStatus: 'rejected', status: 'facility_rejected' });
+        APP.notify('Facility rejected', 'info');
     } else {
         DB.update('material_requests', id, { storeStatus: 'rejected', status: 'store_rejected' });
         APP.notify('Store rejected', 'info');
+    }
+    renderMatList();
+}
+
+function fulfillMatReq(id) {
+    var user = AUTH.currentUser();
+    DB.update('material_requests', id, {
+        fulfilledBy: user.fullName,
+        fulfilledAt: new Date().toISOString(),
+        status: 'store_approved'
+    });
+    APP.notify('Items fulfilled — awaiting creator confirmation to close', 'success');
+    renderMatList();
+}
+
+function closeMatReq(id) {
+    if (!confirm('Confirm receipt of all items? Select Cancel for partial fulfillment.')) {
+        DB.update('material_requests', id, { status: 'partial_fulfilled', closedBy: AUTH.currentUser().fullName, closedAt: new Date().toISOString() });
+        APP.notify('Marked as partial fulfilled', 'info');
+    } else {
+        DB.update('material_requests', id, { status: 'fulfilled', closedBy: AUTH.currentUser().fullName, closedAt: new Date().toISOString() });
+        APP.notify('Request fulfilled and closed', 'success');
     }
     renderMatList();
 }

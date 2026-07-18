@@ -128,7 +128,12 @@ function renderHodOverview() {
     var user = AUTH.currentUser();
     var dept = user.department || '';
     var tasks = filterByDept(DB.get('tasks'));
-    var problems = filterByDept(DB.get('problems'));
+    var allProblems = DB.get('problems') || [];
+    var problems = allProblems.filter(function(p) {
+        if (user.role === 'admin' || user.isSuperAdmin) return true;
+        var mappedDept = (typeof CATEGORY_DEPT_MAP !== 'undefined' ? CATEGORY_DEPT_MAP : {})[p.category] || p.department || '';
+        return mappedDept === user.department || p.createdBy === user.fullName;
+    });
     var mrs = filterByDept(DB.get('material_requests'));
     var leaves = filterByDept(DB.get('leave_requests'));
     var breakdowns = filterByDept(DB.get('daily_breakdown'));
@@ -213,27 +218,45 @@ function renderHodOverview() {
 
 /* ─── PROBLEMS TAB ─── */
 
+var CATEGORY_DEPT_MAP = window.CATEGORY_DEPT_MAP || {
+    'Electrical': 'Maintenance',
+    'Plumbing': 'Maintenance',
+    'Equipment': 'Maintenance',
+    'Infrastructure': 'Maintenance',
+    'IT System': 'IT',
+    'Medical': 'Medical',
+    'Security': 'Security',
+    'Other': ''
+};
+
 function renderHodProblems() {
     var el = document.getElementById('hodContent');
     if (!el) return;
     var user = AUTH.currentUser();
     var isAdmin = user.role === 'admin' || user.isSuperAdmin;
-    var problems = filterByDept(DB.get('problems'));
+    var allProblems = DB.get('problems') || [];
+    var problems = allProblems.filter(function(p) {
+        if (isAdmin) return true;
+        var mappedDept = CATEGORY_DEPT_MAP[p.category] || p.department || '';
+        return mappedDept === user.department || p.createdBy === user.fullName || p.assignedTo === user.fullName;
+    });
     var deptUsers = getDeptUsers();
 
     var html =
         '<div style="margin-bottom:10px;"><button class="btn btn-primary" onclick="showHodProblemForm()">+ Report Problem</button></div>' +
-        '<div class="card"><div class="table-responsive"><table><thead><tr><th>Title</th><th>Area</th><th>Reported By</th><th>Priority</th><th>TAT</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+        '<div class="card"><div class="table-responsive"><table><thead><tr><th>Title</th><th>Category</th><th>Routed Dept</th><th>Reported By</th><th>Priority</th><th>TAT</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
     if (!problems.length) {
-        html += '<tr><td colspan="7" class="empty-state">No problems reported</td></tr>';
+        html += '<tr><td colspan="8" class="empty-state">No problems reported</td></tr>';
     } else {
         problems.slice().reverse().forEach(function(p) {
             var tat = computeTAT(p.createdAt, p.resolvedAt);
             var tatCol = getTATColor(tat);
+            var mappedDept = CATEGORY_DEPT_MAP[p.category] || p.department || '-';
             html += '<tr>' +
                 '<td><strong>' + p.title + '</strong></td>' +
-                '<td>' + (p.area || '-') + '</td>' +
-                '<td>' + (p.createdBy || '-') + '</td>' +
+                '<td><span class="badge badge-info">' + (p.category || '-') + '</span></td>' +
+                '<td>' + mappedDept + '</td>' +
+                '<td>' + (p.reportedBy || p.createdBy || '-') + '</td>' +
                 '<td><span class="badge ' + (p.priority === 'high' ? 'badge-danger' : p.priority === 'medium' ? 'badge-warning' : 'badge-info') + '">' + (p.priority || 'normal') + '</span></td>' +
                 '<td><span style="color:var(--' + tatCol + ');font-weight:600;">' + tat + '</span></td>' +
                 '<td>' + APP.getStatusBadge(p.status || 'open') + '</td>' +
@@ -251,10 +274,11 @@ function showHodProblemForm(data) {
     data = data || {};
     var user = AUTH.currentUser();
     var deptUsers = getDeptUsers();
+    var catOpts = Object.keys(CATEGORY_DEPT_MAP).map(function(c) { return '<option value="' + c + '">' + c + '</option>'; }).join('');
     var memberOpts = deptUsers.filter(function(u) { return u.role !== 'admin'; }).map(function(u) { return '<option value="' + u.fullName + '" ' + (data.assignedTo === u.fullName ? 'selected' : '') + '>' + u.fullName + '</option>'; }).join('');
     openFormModal('Report Problem',
         '<div class="form-group"><label>Title *</label><input type="text" id="hpTitle" class="form-control" value="' + (data.title || '') + '"></div>' +
-        '<div class="form-group"><label>Area</label><input type="text" id="hpArea" class="form-control" value="' + (data.area || '') + '"></div>' +
+        '<div class="form-group"><label>Category *</label><select id="hpCategory" class="form-control"><option value="">Select</option>' + catOpts + '</select></div>' +
         '<div class="form-group"><label>Assign To</label><select id="hpAssigned" class="form-control"><option value="">Select</option>' + memberOpts + '</select></div>' +
         '<div class="form-group"><label>Priority</label><select id="hpPriority" class="form-control">' +
             '<option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option>' +
@@ -268,13 +292,16 @@ function saveHodProblem(editId) {
     var title = document.getElementById('hpTitle').value.trim();
     if (!title) { APP.notify('Enter title', 'error'); return false; }
     var user = AUTH.currentUser();
+    var category = document.getElementById('hpCategory') ? document.getElementById('hpCategory').value : '';
+    var routedDept = CATEGORY_DEPT_MAP[category] || user.department || '';
     var data = {
         title: title,
-        area: document.getElementById('hpArea').value.trim(),
+        category: category,
+        area: document.getElementById('hpCategory') ? document.getElementById('hpCategory').value : '',
         assignedTo: document.getElementById('hpAssigned').value,
         priority: document.getElementById('hpPriority').value,
         description: document.getElementById('hpDesc').value.trim(),
-        department: user.department || '',
+        department: routedDept,
         createdBy: user.fullName,
         createdAt: new Date().toISOString(),
         status: 'open'
@@ -285,15 +312,16 @@ function saveHodProblem(editId) {
         APP.notify('Problem updated', 'success');
     } else {
         DB.add('problems', data);
-        APP.notify('Problem reported', 'success');
+        APP.notify('Problem reported — routed to ' + (routedDept || 'General'), 'success');
     }
     renderHodProblems();
     return true;
 }
 
 function resolveHodProblem(id) {
-    if (!confirm('Mark as resolved?')) return;
-    DB.update('problems', id, { status: 'resolved', resolvedAt: new Date().toISOString(), resolvedBy: AUTH.currentUser().fullName });
+    var solution = prompt('Enter solution details:');
+    if (!solution) return;
+    DB.update('problems', id, { status: 'resolved', resolvedAt: new Date().toISOString(), resolvedBy: AUTH.currentUser().fullName, solution: solution });
     APP.notify('Problem resolved', 'success');
     renderHodProblems();
 }
@@ -404,29 +432,38 @@ function renderHodMaterials() {
     var el = document.getElementById('hodContent');
     if (!el) return;
     var user = AUTH.currentUser();
-    var mrs = filterByDept(DB.get('material_requests'));
+    var isAdmin = user.role === 'admin' || user.isSuperAdmin;
+    var all = DB.get('material_requests') || [];
+    var mrs = all.filter(function(m) {
+        if (isAdmin) return true;
+        return m.department === user.department || m.createdBy === user.fullName;
+    });
 
     var html =
         '<div style="margin-bottom:10px;"><button class="btn btn-primary" onclick="showHodMrForm()">+ New Request</button></div>' +
-        '<div class="card"><div class="table-responsive"><table><thead><tr><th>Title</th><th>Requested By</th><th>Urgency</th><th>HOD Status</th><th>Store Status</th><th>TAT</th><th>Actions</th></tr></thead><tbody>';
+        '<div class="card"><div class="table-responsive"><table><thead><tr><th>Title</th><th>Requested By</th><th>Urgency</th><th>HOD</th><th>Facility</th><th>Store</th><th>TAT</th><th>Actions</th></tr></thead><tbody>';
     if (!mrs.length) {
-        html += '<tr><td colspan="7" class="empty-state">No material requests</td></tr>';
+        html += '<tr><td colspan="8" class="empty-state">No material requests</td></tr>';
     } else {
         mrs.slice().reverse().forEach(function(m) {
             var tat = computeTAT(m.createdAt, m.storeApprovedAt || m.updatedAt);
             var tatCol = getTATColor(tat);
-            var hodStatus = m.hodStatus || (m.status === 'approved' ? 'Approved' : m.status === 'rejected' ? 'Rejected' : 'Pending');
-            var storeStatus = m.storeStatus || (m.status === 'store_approved' ? 'Approved' : m.status === 'store_rejected' ? 'Rejected' : 'Pending');
+            var isPending = m.status === 'pending' || !m.hodStatus || m.hodStatus === 'pending';
+            var isHodApproved = m.hodStatus === 'approved' || m.status === 'hod_approved';
+            var canApproveHod = isPending && (isAdmin || m.department === user.department);
+            var canApproveFacility = isHodApproved && m.facilityStatus !== 'approved' && m.facilityStatus !== 'rejected';
             html += '<tr>' +
                 '<td><strong>' + m.title + '</strong></td>' +
-                '<td>' + (m.requestedBy || '-') + '</td>' +
+                '<td>' + (m.createdBy || m.requestedBy || '-') + '</td>' +
                 '<td><span class="badge ' + (m.urgency === 'urgent' ? 'badge-danger' : 'badge-warning') + '">' + (m.urgency || 'normal') + '</span></td>' +
-                '<td>' + APP.getStatusBadge(hodStatus) + '</td>' +
-                '<td>' + APP.getStatusBadge(storeStatus) + '</td>' +
+                '<td>' + (m.hodStatus === 'approved' ? '<span class="badge badge-success">Approved</span>' : m.hodStatus === 'rejected' ? '<span class="badge badge-danger">Rejected</span>' : '<span class="badge badge-warning">Pending</span>') + '</td>' +
+                '<td>' + (m.facilityStatus === 'approved' ? '<span class="badge badge-success">Approved</span>' : m.facilityStatus === 'rejected' ? '<span class="badge badge-danger">Rejected</span>' : '<span class="badge badge-warning">Pending</span>') + '</td>' +
+                '<td>' + (m.storeStatus === 'approved' ? '<span class="badge badge-success">Approved</span>' : m.storeStatus === 'rejected' ? '<span class="badge badge-danger">Rejected</span>' : '<span class="badge badge-warning">Pending</span>') + '</td>' +
                 '<td><span style="color:var(--' + tatCol + ');font-weight:600;">' + tat + '</span></td>' +
                 '<td>' +
-                    (m.hodStatus !== 'approved' && m.hodStatus !== 'rejected' ? '<button class="btn btn-sm btn-success" onclick="approveHodMr(\'' + m.id + '\')">Approve</button> ' : '') +
-                    (m.hodStatus !== 'approved' && m.hodStatus !== 'rejected' ? '<button class="btn btn-sm btn-warning" onclick="rejectHodMr(\'' + m.id + '\')">Reject</button> ' : '') +
+                    (canApproveHod ? '<button class="btn btn-sm btn-success" onclick="approveHodMr(\'' + m.id + '\')">\u2713 HOD</button> ' : '') +
+                    (isPending ? '<button class="btn btn-sm btn-warning" onclick="rejectHodMr(\'' + m.id + '\')">\u2717 HOD</button> ' : '') +
+                    (canApproveFacility && (isAdmin || user.role === 'hod') ? '<button class="btn btn-sm btn-primary" onclick="approveHodMrFacility(\'' + m.id + '\')">\u2713 Facility</button> ' : '') +
                 '</td></tr>';
         });
     }
@@ -436,27 +473,63 @@ function renderHodMaterials() {
 
 function showHodMrForm(data) {
     data = data || {};
+    var inventory = DB.get('inventory') || [];
+    var itemOpts = '';
+    for (var i = 0; i < inventory.length; i++) {
+        var inv = inventory[i];
+        itemOpts += '<option value="' + inv.name.replace(/"/g,'&quot;') + '" data-unit="' + (inv.unit || 'pcs') + '">' + inv.name + '</option>';
+    }
     openFormModal('New Material Request',
         '<div class="form-group"><label>Title *</label><input type="text" id="hmTitle" class="form-control" value="' + (data.title || '') + '"></div>' +
         '<div class="form-group"><label>Description</label><textarea id="hmDesc" class="form-control" rows="3">' + (data.description || '') + '</textarea></div>' +
         '<div class="form-group"><label>Urgency</label><select id="hmUrgency" class="form-control">' +
             '<option value="normal">Normal</option><option value="urgent">Urgent</option>' +
-        '</select></div>',
+        '</select></div>' +
+        '<div class="form-group"><label>Items</label><div id="hmItems"><div style="display:flex;gap:6px;margin-bottom:4px;">' +
+        '<select class="form-control hm-item-select" style="flex:2;">' + itemOpts + '</select>' +
+        '<input type="number" class="form-control hm-item-qty" placeholder="Qty" style="width:70px;" min="1" value="1">' +
+        '<button type="button" class="btn btn-sm btn-success" onclick="addHodMrItemRow()">+</button></div></div></div>',
         'saveHodMr(\'' + (data.id || '') + '\')'
     );
+}
+
+function addHodMrItemRow() {
+    var inventory = DB.get('inventory') || [];
+    var itemOpts = '';
+    for (var i = 0; i < inventory.length; i++) {
+        var inv = inventory[i];
+        itemOpts += '<option value="' + inv.name.replace(/"/g,'&quot;') + '">' + inv.name + '</option>';
+    }
+    var container = document.getElementById('hmItems');
+    if (!container) return;
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:6px;margin-bottom:4px;';
+    row.innerHTML = '<select class="form-control hm-item-select" style="flex:2;">' + itemOpts + '</select>' +
+        '<input type="number" class="form-control hm-item-qty" placeholder="Qty" style="width:70px;" min="1" value="1">' +
+        '<button type="button" class="btn btn-sm btn-danger" onclick="this.parentElement.remove()">x</button>';
+    container.appendChild(row);
 }
 
 function saveHodMr(editId) {
     var title = document.getElementById('hmTitle').value.trim();
     if (!title) { APP.notify('Enter title', 'error'); return false; }
     var user = AUTH.currentUser();
+    var items = [];
+    var rows = document.querySelectorAll('#hmItems > div');
+    for (var i = 0; i < rows.length; i++) {
+        var sel = rows[i].querySelector('.hm-item-select');
+        var qty = rows[i].querySelector('.hm-item-qty');
+        if (sel && sel.value) items.push({ name: sel.value, qty: parseInt(qty ? qty.value : 1) || 1, unit: 'pcs' });
+    }
     var data = {
         title: title,
         description: document.getElementById('hmDesc').value.trim(),
         urgency: document.getElementById('hmUrgency').value,
-        requestedBy: user.fullName,
+        items: items,
+        createdBy: user.fullName,
         department: user.department || '',
         hodStatus: 'pending',
+        facilityStatus: 'pending',
         storeStatus: 'pending',
         status: 'pending',
         createdAt: new Date().toISOString()
@@ -475,7 +548,14 @@ function saveHodMr(editId) {
 function approveHodMr(id) {
     if (!confirm('Approve this request?')) return;
     DB.update('material_requests', id, { hodStatus: 'approved', status: 'hod_approved', approvedBy: AUTH.currentUser().fullName, approvedAt: new Date().toISOString() });
-    APP.notify('Request approved, sent to store', 'success');
+    APP.notify('HOD approved — now awaiting Facility approval', 'success');
+    renderHodMaterials();
+}
+
+function approveHodMrFacility(id) {
+    if (!confirm('Approve as Facility HOD?')) return;
+    DB.update('material_requests', id, { facilityStatus: 'approved', status: 'facility_approved', facilityApprovedBy: AUTH.currentUser().fullName, facilityApprovedAt: new Date().toISOString() });
+    APP.notify('Facility approved — sent to Store', 'success');
     renderHodMaterials();
 }
 
