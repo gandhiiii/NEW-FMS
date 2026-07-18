@@ -594,6 +594,10 @@ const APP = {
             suggestions: renderSuggestions,
             reports: renderReports,
             budget: renderBudget,
+            'employee-reports': renderEmployeeReports,
+            'budget-reports': renderBudgetReports,
+            'dept-reports': renderDeptReports,
+            teams: renderTeams,
             'employee-dashboard': renderEmployeeDashboard
         };
         if (renderers[mod]) {
@@ -621,6 +625,12 @@ const APP = {
             if (!Array.isArray(DB.get('suggestions')) || DB.get('suggestions').length === 0) {
                 DB.set('suggestions', []);
             }
+            if (!Array.isArray(DB.get('teams')) || DB.get('teams').length === 0) {
+                DB.set('teams', []);
+            }
+            if (!Array.isArray(DB.get('team_tasks')) || DB.get('team_tasks').length === 0) {
+                DB.set('team_tasks', []);
+            }
             if (!Array.isArray(DB.get('reports')) || DB.get('reports').length === 0) {
                 DB.set('reports', []);
             }
@@ -628,7 +638,8 @@ const APP = {
                 const defaultRights = ['dashboard','users','departments','inventory','gate-security',
                     'projects','ambulance','problems','tasks','complaints',
                     'room-checklist','admissions','lost-found','checklists','admin-checklists',
-                    'material-requests','suggestions','employee-dashboard','reports','budget'];
+                    'material-requests','suggestions','employee-dashboard','reports','budget','teams',
+                    'employee-reports','budget-reports','dept-reports'];
                 DB.set('featureRights', defaultRights);
             }
             const floors = DB.get('floorItems');

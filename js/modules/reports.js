@@ -15,7 +15,8 @@ const REPORT_CATEGORIES = [
     { id: 'lostfound', label: 'Lost & Found' },
     { id: 'phase2_materials', label: 'Phase 2 Infra - Materials' },
     { id: 'phase2_tasks', label: 'Phase 2 Infra - Tasks' },
-    { id: 'work_reports', label: 'Work Progress / Reports' }
+    { id: 'work_reports', label: 'Work Progress / Reports' },
+    { id: 'team_tasks', label: 'Team Tasks' }
 ];
 
 const REPORT_COLLECTIONS = {
@@ -35,7 +36,8 @@ const REPORT_COLLECTIONS = {
     lostfound: 'lostfound',
     phase2_materials: 'phase2',
     phase2_tasks: 'phase2Tasks',
-    work_reports: 'reports'
+    work_reports: 'reports',
+    team_tasks: 'team_tasks'
 };
 
 function renderReports(container) {
@@ -45,9 +47,16 @@ function renderReports(container) {
         container.innerHTML = '<div class="empty-state">Access restricted to admin only</div>';
         return;
     }
+    var now = new Date();
+    var firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    var today = now.toISOString().split('T')[0];
     container.innerHTML = `
         <div class="flex-between mb-4">
             <h2 style="font-size:18px;font-weight:700;">📊 Reports</h2>
+            <div>
+                <button class="btn btn-success" onclick="exportExcel()" id="rptExportBtn" disabled>⬇ Export Excel</button>
+                <button class="btn btn-info" onclick="printReport()" id="rptPrintBtn" disabled>🖨 Print PDF</button>
+            </div>
         </div>
         <div class="card">
             <div class="card-header"><h3>Filter Options</h3></div>
@@ -83,21 +92,20 @@ function renderReports(container) {
                 </div>
                 <div class="form-group">
                     <label>From Date</label>
-                    <input type="date" id="rptFrom" class="form-control">
+                    <input type="date" id="rptFrom" class="form-control" value="` + firstDay + `">
                 </div>
                 <div class="form-group">
                     <label>To Date</label>
-                    <input type="date" id="rptTo" class="form-control">
+                    <input type="date" id="rptTo" class="form-control" value="` + today + `">
                 </div>
             </div>
             <div style="display:flex;gap:8px;margin-top:8px;">
                 <button class="btn btn-primary" onclick="generateReport()">Generate Report</button>
-                <button class="btn btn-success" onclick="exportExcel()" id="rptExportBtn" disabled>Export Excel</button>
-                <button class="btn btn-info" onclick="printReport()" id="rptPrintBtn" disabled>Print PDF</button>
             </div>
         </div>
         <div id="rptResult"></div>
     `;
+    setTimeout(generateReport, 200);
 }
 
 let _lastReportData = null;
@@ -142,10 +150,14 @@ function generateReport() {
 
     _lastReportData = ctx;
     _lastReportTitle = 'HMS Report - ' + ctx.type.charAt(0).toUpperCase() + ctx.type.slice(1);
+    if (!ctx.from) ctx.from = document.getElementById('rptFrom') ? document.getElementById('rptFrom').value : '';
+    if (!ctx.to) ctx.to = document.getElementById('rptTo') ? document.getElementById('rptTo').value : '';
 
     renderReportResult(container, ctx);
-    document.getElementById('rptExportBtn').disabled = false;
-    document.getElementById('rptPrintBtn').disabled = false;
+    var eb = document.getElementById('rptExportBtn');
+    var pb = document.getElementById('rptPrintBtn');
+    if (eb) eb.disabled = false;
+    if (pb) pb.disabled = false;
 }
 
 function dateFilter(item, from, to) {
@@ -244,20 +256,20 @@ function buildEmpKPISection(empName, ctx) {
     const rApproved = requests.filter(r => r.status === 'approved').length;
     const rRate = requests.length > 0 ? Math.round((rApproved / requests.length) * 100) : 0;
 
-    const rows = [
+    var rows = [
         ['Tasks', tDone + '/' + tasks.length, tRate + '%'],
         ['Checklists', clDone + '/' + checklists.length, clRate + '%'],
         ['Complaints', cDone + '/' + complaints.length, cRate + '%'],
         ['Problems Solved', pDone + '/' + problems.length, pRate + '%'],
         ['Material Requests Approved', rApproved + '/' + requests.length, rRate + '%'],
         ['Suggestions', suggestions.length, '']
-    ].filter(r => parseInt(r[1].split('/')[1] || r[1]) > 0);
+    ];
 
-    return rows.length > 0 ? {
+    return {
         title: empName + ' — KPIs',
         cols: ['Category', 'Done/Total', 'Rate'],
-        rows
-    } : null;
+        rows: rows
+    };
 }
 
 /* ─── Budget Section Helper ─── */
@@ -406,9 +418,6 @@ function buildIndividualReport(ctx) {
     if (emp) employees = employees.filter(u => u.fullName === emp);
     const sections = [];
 
-    var bdgSec = buildBudgetSection();
-    if (bdgSec) sections.push(bdgSec);
-
     employees.forEach(e => {
         const empName = e.fullName;
         let totalItems = 0;
@@ -479,7 +488,8 @@ function getColumns(catId) {
         ambulance: ['Vehicle No', 'Driver', 'Status', 'Speed', 'Last Updated'],
         phase2_materials: ['Material', 'Direction', 'Quantity', 'Unit', 'Vehicle', 'Supplier', 'Date'],
         phase2_tasks: ['Title', 'Assigned To', 'Status', 'Progress', 'Start', 'Deadline'],
-        work_reports: ['Title', 'Category', 'Created By', 'Sent To', 'Status', 'Date']
+        work_reports: ['Title', 'Category', 'Created By', 'Sent To', 'Status', 'Date'],
+        team_tasks: ['Title', 'Team', 'Assigned To', 'Priority', 'Progress', 'Status', 'Deadline']
     };
     return all[catId] || ['Name', 'Status', 'Date'];
 }
@@ -510,7 +520,8 @@ function getRows(catId, items) {
         ambulance: items.map(i => [f(i.vehicleNo), f(i.driverName || i.driver || '-'), f(i.status || '-'), f(i.speed || '0'), f(i.lastUpdated ? APP.formatDateTime(i.lastUpdated) : '-')]),
         phase2_materials: items.map(i => [f(i.materialName || i.name), f(i.direction || '-'), f(i.quantity || '0'), f(i.unit || '-'), f(i.vehicleNo || '-'), f(i.supplier || '-'), d(i)]),
         phase2_tasks: items.map(i => [f(i.title), f(i.assignedTo || '-'), f(i.status || '-'), (i.progress || '0') + '%', f(i.startDate ? APP.formatDate(i.startDate) : '-'), f(i.deadline ? APP.formatDate(i.deadline) : '-')]),
-        work_reports: items.map(i => [f(i.title), f(i.category || '-'), f(i.createdByName || i.createdBy || '-'), f(i.sentTo || '-'), f(i.status || '-'), d(i)])
+        work_reports: items.map(i => [f(i.title), f(i.category || '-'), f(i.createdByName || i.createdBy || '-'), f(i.sentTo || '-'), f(i.status || '-'), d(i)]),
+        team_tasks: items.map(i => [f(i.title), f(i.teamName || '-'), f(i.assignedToName || '-'), f(i.priority || 'normal'), (i.progress || 0) + '%', f(i.status), f(i.deadline ? APP.formatDate(i.deadline) : '-')])
     };
     return all[catId] || items.map(i => [f(i.title || i.name || i.fullName || i.patientName || i.itemName), f(i.status), d(i)]);
 }
@@ -519,24 +530,69 @@ function getRows(catId, items) {
 
 const RPT_COLORS = ['#1a73e8','#34a853','#fbbc04','#ea4335','#4285f4','#7b1fa2','#00bcd4','#e91e63','#ff5722','#607d8b'];
 
-function chartConfig(type, labels, data, label, isPct) {
-    const isBar = type === 'bar';
+function rptPctPlugin(pctArr) {
     return {
-        type,
-        data: { labels, datasets: [{ label, data, backgroundColor: isBar ? RPT_COLORS.slice(0,labels.length) : RPT_COLORS, borderColor: '#fff', borderWidth: 1 }] },
-        options: {
-            responsive: true, maintainAspectRatio: false,
-            plugins: { legend: { display: !isBar, position: 'bottom', labels: { boxWidth: 12, padding: 8, font: { size: 11 } } } },
-            scales: isBar ? { y: { beginAtZero: true, max: isPct ? 100 : undefined, grid: { color: '#eee' } }, x: { grid: { display: false } } } : {}
+        id: 'rptPctLabel',
+        afterDraw: function(chart) {
+            var ctx = chart.ctx;
+            chart.data.datasets.forEach(function(ds, i) {
+                var meta = chart.getDatasetMeta(i);
+                meta.data.forEach(function(el, j) {
+                    var pct = pctArr && pctArr[j];
+                    if (!pct || pct < 3) return;
+                    var pos = el.tooltipPosition();
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 11px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(pct + '%', pos.x, pos.y);
+                });
+            });
         }
     };
 }
 
-function renderChart(canvasId, type, labels, data, label, isPct) {
+function chartConfig(type, labels, data, label, isPct, pcts) {
+    const isBar = type === 'bar';
+    var cfg = {
+        type,
+        data: { labels, datasets: [{ label, data, backgroundColor: isBar ? RPT_COLORS.slice(0,labels.length) : RPT_COLORS, borderColor: '#fff', borderWidth: 1 }] },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { display: !isBar, position: 'bottom', labels: { boxWidth: 12, padding: 8, font: { size: 11 } } },
+                tooltip: {
+                    callbacks: {
+                        label: function(ti) {
+                            var raw = ti.raw;
+                            var total = ti.dataset.data.reduce(function(a, b) { return a + b; }, 0);
+                            var pct = total > 0 ? Math.round((raw / total) * 100) : 0;
+                            return ti.label + ': ' + raw + ' (' + pct + '%)';
+                        }
+                    }
+                }
+            },
+            scales: isBar ? { y: { beginAtZero: true, max: isPct ? 100 : undefined, grid: { color: '#eee' }, ticks: { font: { size: 10 } } }, x: { grid: { display: false }, ticks: { font: { size: 9 } } } } : {}
+        }
+    };
+    if (!isBar && pcts && pcts.length) {
+        if (!cfg.plugins) cfg.plugins = {};
+        cfg.plugins.legend.labels.generateLabels = function(chart) {
+            var orig = Chart.defaults.plugins.legend.labels.generateLabels(chart);
+            orig.forEach(function(o, i) {
+                o.text = o.text + ' (' + pcts[i] + '%)';
+            });
+            return orig;
+        };
+    }
+    return cfg;
+}
+
+function renderChart(canvasId, type, labels, data, label, isPct, pcts) {
     const el = document.getElementById(canvasId);
     if (!el) return null;
     try {
-        return new Chart(el.getContext('2d'), chartConfig(type, labels, data, label, isPct));
+        return new Chart(el.getContext('2d'), chartConfig(type, labels, data, label, isPct, pcts));
     } catch (e) { return null; }
 }
 
@@ -574,9 +630,10 @@ function renderTableResult(container, ctx) {
             html += '<div class="card" style="margin-top:16px;"><div class="card-header"><h3>' + sec.title + '</h3></div><div class="empty-state">No data</div></div>';
             return;
         }
+        var isKpi = sec.title === 'Key Performance Indicators' || sec.title === 'Budget Overview' || sec.title === 'Employee Summary';
         html += '<div class="card" style="margin-top:16px;">';
         html += '<div class="card-header"><h3>' + sec.title + ' <span style="font-size:13px;color:var(--gray);font-weight:400;">(' + (sec.total || sec.rows.length) + ' records)</span></h3></div>';
-        html += '<div class="table-responsive" style="max-height:300px;overflow-y:auto;">';
+        html += '<div class="table-responsive" style="max-height:' + (isKpi ? 'none' : '300px') + ';overflow-y:auto;">';
         html += '<table><thead><tr>' + sec.cols.map(c => '<th>' + c + '</th>').join('') + '</tr></thead>';
         html += '<tbody>' + sec.rows.map(r => '<tr>' + r.map(c => '<td>' + c + '</td>').join('') + '</tr>').join('') + '</tbody>';
         html += '</table></div>';
@@ -589,12 +646,13 @@ function renderTableResult(container, ctx) {
             const catData = sections.filter((s,i) => i > 0).map(s => s.total || s.rows.length).filter(v => v > 0);
             const catLabels = sections.filter((s,i) => i > 0).map(s => s.title).filter((_,i) => catData[i]);
             if (catData.length) {
-                html += '<div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
+                html += '<div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">';
                 html += '<div style="height:200px;"><canvas id="rptPieChart"></canvas></div>';
                 html += '<div style="height:200px;"><canvas id="rptDoughnutChart"></canvas></div>';
+                html += '<div style="height:200px;"><canvas id="rptCatBarChart"></canvas></div>';
                 html += '</div>';
             }
-        } else if (si > 0 && sec.rows.length >= 3) {
+        } else if (si > 0 && sec.rows.length >= 3 && !isKpi) {
             const stData = {};
             sec.rows.forEach(r => { const s = r[3] || r[1] || ''; stData[s] = (stData[s] || 0) + 1; });
             const keys = Object.keys(stData);
@@ -617,19 +675,40 @@ function renderTableResult(container, ctx) {
             const catData = sections.filter((s,i) => i > 0).map(s => s.total || s.rows.length).filter(v => v > 0);
             const catLabels = sections.filter((s,i) => i > 0).map(s => s.title).filter((_,i) => catData[i]);
             if (catData.length) {
-                const c2 = renderChart('rptPieChart','pie',catLabels,catData,'Records');
+                var total = catData.reduce(function(a, b) { return a + b; }, 0);
+                var catPcts = catData.map(function(d) { return total > 0 ? Math.round(d / total * 100) : 0; });
+                var c2 = renderChart('rptPieChart','pie',catLabels,catData,'Records',false,catPcts);
                 if (c2) _reportCharts.push(c2);
-                const c3 = renderChart('rptDoughnutChart','doughnut',catLabels,catData,'Records');
+                var c3 = renderChart('rptDoughnutChart','doughnut',catLabels,catData,'Records',false,catPcts);
                 if (c3) _reportCharts.push(c3);
+                (function(cd, cl) {
+                    var el = document.getElementById('rptCatBarChart');
+                    if (el) {
+                        try {
+                            var bc = new Chart(el.getContext('2d'), {
+                                type: 'bar',
+                                data: { labels: cl, datasets: [{ label: 'Records', data: cd, backgroundColor: RPT_COLORS.slice(0, cl.length), borderColor: '#fff', borderWidth: 1 }] },
+                                options: {
+                                    responsive: true, maintainAspectRatio: false,
+                                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ti) { return ti.label + ': ' + ti.raw; } } } },
+                                    scales: { y: { beginAtZero: true, grid: { color: '#eee' }, ticks: { font: { size: 9 } } }, x: { grid: { display: false }, ticks: { font: { size: 8 }, maxRotation: 45 } } }
+                                }
+                            });
+                            _reportCharts.push(bc);
+                        } catch(e) {}
+                    }
+                })(catData, catLabels);
             }
         }
         sections.forEach((sec, si) => {
-            if (si > 0 && sec.rows.length >= 3) {
+            if (si > 0 && sec.rows.length >= 3 && sec.title !== 'Budget Overview' && sec.title !== 'Employee Summary') {
                 const stData = {};
                 sec.rows.forEach(r => { const s = r[3] || r[1] || ''; stData[s] = (stData[s] || 0) + 1; });
                 const keys = Object.keys(stData);
                 if (keys.length >= 2 && keys.length <= 10) {
-                    const c = renderChart('rptCatChart_' + si,'doughnut',keys,keys.map(k => stData[k]),'Status');
+                    var total = keys.reduce(function(a, k) { return a + stData[k]; }, 0);
+                    var pcts = keys.map(function(k) { return total > 0 ? Math.round(stData[k] / total * 100) : 0; });
+                    var c = renderChart('rptCatChart_' + si,'doughnut',keys,keys.map(k => stData[k]),'Status',false,pcts);
                     if (c) _reportCharts.push(c);
                 }
             }
@@ -651,23 +730,52 @@ function renderDeptResult(container, ctx) {
         html += '<tbody>' + sec.rows.map(r => '<tr>' + r.map(c => '<td>' + c + '</td>').join('') + '</tr>').join('') + '</tbody></table></div></div>';
     });
     html += '<div class="card" style="margin-top:16px;"><div class="card-header"><h3>Department-wise Summary</h3></div>';
-    html += '<div class="table-responsive"><table><thead><tr><th>Department</th><th>Employees</th><th>Total Records</th><th>Breakdown</th></tr></thead><tbody>';
+    var deptLabels = deptSections.map(function(s) { return s.title; });
+    var deptData = deptSections.map(function(s) { return s.total; });
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:12px;">';
+    html += '<div style="height:220px;"><canvas id="rptDeptPieChart"></canvas></div>';
+    html += '<div style="height:220px;"><canvas id="rptDeptChart"></canvas></div>';
+    html += '</div>';
+    html += '<div class="table-responsive"><table><thead><tr><th>Department</th><th>Employees</th><th>Total Records</th><th>% Share</th><th>Progress</th><th>Breakdown</th></tr></thead><tbody>';
     var grandTotal = 0;
     deptSections.forEach(function(sec) {
         grandTotal += sec.total;
-        html += '<tr><td><strong>' + sec.title + '</strong></td><td>' + (sec.deptUsers || 0) + '</td><td>' + sec.total + '</td><td style="font-size:12px;">' + (sec.detail || []).map(function(d) { return d.category + ': ' + d.count; }).join(' | ') + '</td></tr>';
     });
-    html += '<tr style="background:var(--bg);font-weight:600;"><td>Total</td><td></td><td>' + grandTotal + '</td><td></td></tr>';
-    html += '</tbody></table></div>';
-    if (deptSections.length >= 2) {
-        html += '<div style="margin-top:16px;height:250px;"><canvas id="rptDeptChart"></canvas></div>';
-    }
-    html += '</div>';
+    deptSections.forEach(function(sec) {
+        var pct = grandTotal > 0 ? Math.round(sec.total / grandTotal * 100) : 0;
+        var pctColor = pct > 30 ? 'red' : (pct > 15 ? 'yellow' : 'green');
+        html += '<tr><td><strong>' + sec.title + '</strong></td><td>' + (sec.deptUsers || 0) + '</td><td>' + sec.total + '</td><td>' + pct + '%</td><td><div class="progress-bar" style="width:80px;display:inline-block;"><div class="progress-fill ' + pctColor + '" style="width:' + pct + '%;"></div></div></td><td style="font-size:12px;">' + (sec.detail || []).map(function(d) { return d.category + ': ' + d.count; }).join(' | ') + '</td></tr>';
+    });
+    html += '<tr style="background:var(--bg);font-weight:600;"><td>Total</td><td></td><td>' + grandTotal + '</td><td>100%</td><td></td><td></td></tr>';
+    html += '</tbody></table></div></div>';
     container.innerHTML = html;
     setTimeout(function() {
         if (deptSections.length >= 2) {
-            var c = renderChart('rptDeptChart','bar',deptSections.map(function(s) { return s.title; }),deptSections.map(function(s) { return s.total; }),'Total Records',false);
-            if (c) _reportCharts.push(c);
+            var total = deptData.reduce(function(a, b) { return a + b; }, 0);
+            var pcts = deptData.map(function(d) { return total > 0 ? Math.round(d / total * 100) : 0; });
+            var c1 = renderChart('rptDeptChart','bar',deptLabels,deptData,'Total Records',false);
+            if (c1) _reportCharts.push(c1);
+            (function(lbls, dta) {
+                var el = document.getElementById('rptDeptPieChart');
+                if (el) {
+                    try {
+                        var total2 = dta.reduce(function(a, b) { return a + b; }, 0);
+                        var pcts2 = dta.map(function(d) { return total2 > 0 ? Math.round(d / total2 * 100) : 0; });
+                        var pie = new Chart(el.getContext('2d'), {
+                            type: 'doughnut',
+                            data: { labels: lbls, datasets: [{ data: dta, backgroundColor: RPT_COLORS.slice(0, lbls.length), borderColor: '#fff', borderWidth: 1 }] },
+                            options: {
+                                responsive: true, maintainAspectRatio: false,
+                                plugins: {
+                                    legend: { position: 'bottom', labels: { boxWidth: 12, padding: 6, font: { size: 10 }, generateLabels: function(chart) { var orig = Chart.defaults.plugins.legend.labels.generateLabels(chart); orig.forEach(function(o, i) { o.text = o.text + ' (' + pcts2[i] + '%)'; }); return orig; } } },
+                                    tooltip: { callbacks: { label: function(ti) { var raw = ti.raw; var t = ti.dataset.data.reduce(function(a, b) { return a + b; }, 0); var p = t > 0 ? Math.round(raw / t * 100) : 0; return ti.label + ': ' + raw + ' (' + p + '%)'; } } }
+                                }
+                            }
+                        });
+                        _reportCharts.push(pie);
+                    } catch(e) {}
+                }
+            })(deptLabels, deptData);
         }
     }, 100);
 }
@@ -677,39 +785,114 @@ function renderIndivResult(container, ctx) {
     _reportCharts = [];
     const { sections } = ctx;
     let html = '';
+    var empSummaryHtml = '';
+    var empChartsHtml = '';
     sections.forEach((sec, si) => {
-        html += '<div class="card" style="margin-top:16px;">';
-        html += '<div class="card-header"><h3>' + sec.title + '</h3></div>';
         if (sec.kpiSection) {
-            html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
-            html += '<div class="table-responsive"><table><thead><tr>' + sec.kpiSection.cols.map(c => '<th>' + c + '</th>').join('') + '</tr></thead>';
-            html += '<tbody>' + sec.kpiSection.rows.map(r => '<tr>' + r.map(c => '<td>' + c + '</td>').join('') + '</tr>').join('') + '</tbody>';
-            html += '</table></div>';
-            const hasPct = sec.kpiSection.rows.some(r => r[2] && r[2].toString().includes('%'));
-            if (hasPct) {
-                html += '<div style="height:200px;"><canvas id="rptEmpChart_' + si + '"></canvas></div>';
+            var empName = sec.title;
+            var labels = [], data = [];
+            sec.kpiSection.rows.forEach(function(r) {
+                var m = r[2] && r[2].toString().match(/(\d+)%/);
+                if (m) { labels.push(r[0]); data.push(parseInt(m[1])); }
+            });
+            var pctData = data;
+            empSummaryHtml += '<tr><td><strong>' + empName + '</strong></td>' +
+                sec.kpiSection.rows.map(function(r) { return '<td>' + r[2] + '</td>'; }).join('') +
+            '</tr>';
+            if (data.length) {
+                empChartsHtml += '<div class="card" style="margin-top:12px;">';
+                empChartsHtml += '<div class="card-header"><h3>' + empName + ' Performance</h3></div>';
+                empChartsHtml += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:12px;">';
+                empChartsHtml += '<div style="height:200px;"><canvas id="rptEmpChart_' + si + '"></canvas></div>';
+                empChartsHtml += '<div style="height:200px;"><canvas id="rptEmpPie_' + si + '"></canvas></div>';
+                empChartsHtml += '</div></div>';
             }
-            html += '</div>';
-        } else if (sec.cols && sec.rows) {
-            html += '<div class="table-responsive"><table><thead><tr>' + sec.cols.map(c => '<th>' + c + '</th>').join('') + '</tr></thead>';
-            html += '<tbody>' + sec.rows.map(r => '<tr>' + r.map(c => '<td>' + c + '</td>').join('') + '</tr>').join('') + '</tbody>';
-            html += '</table></div>';
         }
-        html += '</div>';
     });
+    if (empSummaryHtml) {
+        var empKpiCols = ['Employee'];
+        if (sections.length && sections[0].kpiSection) {
+            sections[0].kpiSection.rows.forEach(function(r) { empKpiCols.push(r[0]); });
+        }
+        html += '<div class="card" style="margin-top:16px;"><div class="card-header"><h3>Employee Performance Summary</h3></div>';
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:12px;">';
+        html += '<div><div class="table-responsive"><table><thead><tr>' + empKpiCols.map(function(c) { return '<th>' + c + '</th>'; }).join('') + '</tr></thead><tbody>' + empSummaryHtml + '</tbody></table></div></div>';
+        html += '<div style="height:220px;"><canvas id="rptPerfDistChart"></canvas></div>';
+        html += '</div></div>';
+        html += empChartsHtml;
+    }
     if (!html) html = '<div class="empty-state" style="margin-top:16px;">No data found for the selected filters</div>';
     container.innerHTML = html;
     setTimeout(() => {
+        var perfData = { 'High (80%+)': 0, 'Medium (40-79%)': 0, 'Low (<40%)': 0 };
+        sections.forEach(function(sec) {
+            if (sec.kpiSection) {
+                sec.kpiSection.rows.forEach(function(r) {
+                    var m = r[2] && r[2].toString().match(/(\d+)%/);
+                    if (m) {
+                        var v = parseInt(m[1]);
+                        if (v >= 80) perfData['High (80%+)']++;
+                        else if (v >= 40) perfData['Medium (40-79%)']++;
+                        else perfData['Low (<40%)']++;
+                    }
+                });
+            }
+        });
+        var perfKeys = Object.keys(perfData).filter(function(k) { return perfData[k] > 0; });
+        if (perfKeys.length >= 2) {
+            var total = perfKeys.reduce(function(a, k) { return a + perfData[k]; }, 0);
+            var pcts = perfKeys.map(function(k) { return total > 0 ? Math.round(perfData[k] / total * 100) : 0; });
+            (function(keys, vals) {
+                var el = document.getElementById('rptPerfDistChart');
+                if (el) {
+                    try {
+                        var pie = new Chart(el.getContext('2d'), {
+                            type: 'doughnut',
+                            data: { labels: keys, datasets: [{ data: vals, backgroundColor: ['#34a853', '#fbbc04', '#ea4335'], borderColor: '#fff', borderWidth: 1 }] },
+                            options: {
+                                responsive: true, maintainAspectRatio: false,
+                                plugins: {
+                                    legend: { position: 'bottom', labels: { boxWidth: 12, padding: 6, font: { size: 10 } } },
+                                    tooltip: { callbacks: { label: function(ti) { return ti.label + ': ' + ti.raw; } } }
+                                }
+                            }
+                        });
+                        _reportCharts.push(pie);
+                    } catch(e) {}
+                }
+            })(perfKeys, perfKeys.map(function(k) { return perfData[k]; }));
+        }
         sections.forEach((sec, si) => {
             if (sec.kpiSection) {
-                const labels = [], data = [];
-                sec.kpiSection.rows.forEach(r => {
-                    const m = r[2] && r[2].toString().match(/(\d+)%/);
+                var labels = [], data = [];
+                sec.kpiSection.rows.forEach(function(r) {
+                    var m = r[2] && r[2].toString().match(/(\d+)%/);
                     if (m) { labels.push(r[0]); data.push(parseInt(m[1])); }
                 });
                 if (data.length) {
-                    const c = renderChart('rptEmpChart_' + si,'bar',labels,data,'Rate %',true);
+                    var c = renderChart('rptEmpChart_' + si,'bar',labels,data,'Rate %',true);
                     if (c) _reportCharts.push(c);
+                    (function(l, d, idx) {
+                        var el = document.getElementById('rptEmpPie_' + idx);
+                        if (el) {
+                            try {
+                                var total2 = d.reduce(function(a, b) { return a + b; }, 0);
+                                var pcts2 = d.map(function(v) { return total2 > 0 ? Math.round(v / total2 * 100) : 0; });
+                                var pie = new Chart(el.getContext('2d'), {
+                                    type: 'doughnut',
+                                    data: { labels: l, datasets: [{ data: d, backgroundColor: RPT_COLORS.slice(0, l.length), borderColor: '#fff', borderWidth: 1 }] },
+                                    options: {
+                                        responsive: true, maintainAspectRatio: false,
+                                        plugins: {
+                                            legend: { position: 'bottom', labels: { boxWidth: 12, padding: 6, font: { size: 10 }, generateLabels: function(chart) { var orig = Chart.defaults.plugins.legend.labels.generateLabels(chart); orig.forEach(function(o, i) { o.text = o.text + ' (' + pcts2[i] + '%)'; }); return orig; } } },
+                                            tooltip: { callbacks: { label: function(ti) { var raw = ti.raw; var t = ti.dataset.data.reduce(function(a, b) { return a + b; }, 0); var p = t > 0 ? Math.round(raw / t * 100) : 0; return ti.label + ': ' + raw + ' (' + p + '%)'; } } }
+                                        }
+                                    }
+                                });
+                                _reportCharts.push(pie);
+                            } catch(e) {}
+                        }
+                    })(labels, data, si);
                 }
             }
         });
