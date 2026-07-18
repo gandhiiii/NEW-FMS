@@ -631,6 +631,15 @@ const APP = {
             if (!Array.isArray(DB.get('team_tasks')) || DB.get('team_tasks').length === 0) {
                 DB.set('team_tasks', []);
             }
+            if (!Array.isArray(DB.get('roomchecklists')) || DB.get('roomchecklists').length === 0) {
+                DB.set('roomchecklists', []);
+            }
+            if (!Array.isArray(DB.get('adminChecklist')) || DB.get('adminChecklist').length === 0) {
+                DB.set('adminChecklist', []);
+            }
+            if (!Array.isArray(DB.get('adminAudits')) || DB.get('adminAudits').length === 0) {
+                DB.set('adminAudits', []);
+            }
             if (!Array.isArray(DB.get('reports')) || DB.get('reports').length === 0) {
                 DB.set('reports', []);
             }

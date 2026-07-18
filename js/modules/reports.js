@@ -16,7 +16,11 @@ const REPORT_CATEGORIES = [
     { id: 'phase2_materials', label: 'Phase 2 Infra - Materials' },
     { id: 'phase2_tasks', label: 'Phase 2 Infra - Tasks' },
     { id: 'work_reports', label: 'Work Progress / Reports' },
-    { id: 'team_tasks', label: 'Team Tasks' }
+    { id: 'team_tasks', label: 'Team Tasks' },
+    { id: 'departments', label: 'Departments' },
+    { id: 'room_checklists', label: 'Room Checklists' },
+    { id: 'admin_checklists', label: 'Admin Checklists' },
+    { id: 'admin_audits', label: 'Admin Audits' }
 ];
 
 const REPORT_COLLECTIONS = {
@@ -37,7 +41,11 @@ const REPORT_COLLECTIONS = {
     phase2_materials: 'phase2',
     phase2_tasks: 'phase2Tasks',
     work_reports: 'reports',
-    team_tasks: 'team_tasks'
+    team_tasks: 'team_tasks',
+    departments: 'departments',
+    room_checklists: 'roomchecklists',
+    admin_checklists: 'adminChecklist',
+    admin_audits: 'adminAudits'
 };
 
 function renderReports(container) {
@@ -489,7 +497,11 @@ function getColumns(catId) {
         phase2_materials: ['Material', 'Direction', 'Quantity', 'Unit', 'Vehicle', 'Supplier', 'Date'],
         phase2_tasks: ['Title', 'Assigned To', 'Status', 'Progress', 'Start', 'Deadline'],
         work_reports: ['Title', 'Category', 'Created By', 'Sent To', 'Status', 'Date'],
-        team_tasks: ['Title', 'Team', 'Assigned To', 'Priority', 'Progress', 'Status', 'Deadline']
+        team_tasks: ['Title', 'Team', 'Assigned To', 'Priority', 'Progress', 'Status', 'Deadline'],
+        departments: ['Name', 'Active', 'Employees', 'Head', 'Description'],
+        room_checklists: ['Room No', 'Floor', 'Status', 'Assigned To', 'Date'],
+        admin_checklists: ['Text', 'Status', 'Created By', 'Date'],
+        admin_audits: ['Title', 'Area', 'Assigned To', 'Status', 'Deadline', 'Date']
     };
     return all[catId] || ['Name', 'Status', 'Date'];
 }
@@ -521,7 +533,11 @@ function getRows(catId, items) {
         phase2_materials: items.map(i => [f(i.materialName || i.name), f(i.direction || '-'), f(i.quantity || '0'), f(i.unit || '-'), f(i.vehicleNo || '-'), f(i.supplier || '-'), d(i)]),
         phase2_tasks: items.map(i => [f(i.title), f(i.assignedTo || '-'), f(i.status || '-'), (i.progress || '0') + '%', f(i.startDate ? APP.formatDate(i.startDate) : '-'), f(i.deadline ? APP.formatDate(i.deadline) : '-')]),
         work_reports: items.map(i => [f(i.title), f(i.category || '-'), f(i.createdByName || i.createdBy || '-'), f(i.sentTo || '-'), f(i.status || '-'), d(i)]),
-        team_tasks: items.map(i => [f(i.title), f(i.teamName || '-'), f(i.assignedToName || '-'), f(i.priority || 'normal'), (i.progress || 0) + '%', f(i.status), f(i.deadline ? APP.formatDate(i.deadline) : '-')])
+        team_tasks: items.map(i => [f(i.title), f(i.teamName || '-'), f(i.assignedToName || '-'), f(i.priority || 'normal'), (i.progress || 0) + '%', f(i.status), f(i.deadline ? APP.formatDate(i.deadline) : '-')]),
+        departments: items.map(function(i) { var deptUsers = (DB.get('users') || []).filter(function(u) { return u.department === i.name; }); return [f(i.name), f(i.active !== false ? 'Active' : 'Inactive'), deptUsers.length, f(i.head || '-'), f(i.description || '-')]; }),
+        room_checklists: items.map(i => [f(i.roomNo || i.roomNumber), f(i.floor || '-'), f(i.status || 'pending'), f(i.assignedTo || '-'), d(i)]),
+        admin_checklists: items.map(i => [f(i.text || i.title), f(i.done ? 'Completed' : 'Pending'), f(i.createdBy || '-'), d(i)]),
+        admin_audits: items.map(i => [f(i.title), f(i.area || '-'), f(i.assignedTo || '-'), f(i.status || 'pending'), f(i.deadline ? APP.formatDate(i.deadline) : '-'), d(i)])
     };
     return all[catId] || items.map(i => [f(i.title || i.name || i.fullName || i.patientName || i.itemName), f(i.status), d(i)]);
 }
