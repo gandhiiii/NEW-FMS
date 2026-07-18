@@ -600,6 +600,11 @@ const APP = {
             teams: renderTeams,
             'hod-dashboard': renderHodDashboard,
             'hod-audits': renderAllHodAudits,
+            'hod-breakdown': renderHodBreakdownPage,
+            'hod-maintenance': renderHodMaintenancePage,
+            'hod-leave': renderHodLeavePage,
+            'hod-daily-mat': renderHodDailyMatPage,
+            'hod-sub-inv': renderHodSubInvPage,
             'employee-dashboard': renderEmployeeDashboard,
             'quarterly-priorities': renderQuarterlyPriorities
         };

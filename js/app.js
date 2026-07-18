@@ -81,6 +81,13 @@ const Router = {
             { id: 'hod-audits', label: 'HOD Audits', icon: '📋', permission: 'dashboard' },
             { id: 'quarterly-priorities', label: 'Q-Priorities', icon: '📅', permission: 'quarterly-priorities' }
         ];
+        const hodItems = [
+            { id: 'hod-breakdown', label: 'Daily Breakdown', icon: '📉' },
+            { id: 'hod-maintenance', label: 'Maintenance', icon: '🔄' },
+            { id: 'hod-leave', label: 'Leave Approvals', icon: '🏖️' },
+            { id: 'hod-daily-mat', label: 'Daily Material Use', icon: '📝' },
+            { id: 'hod-sub-inv', label: 'Sub Inventory', icon: '📦' }
+        ];
         let html = '';
         items.forEach(item => {
             if (AUTH.hasPermission(user, item.permission)) {
@@ -89,6 +96,14 @@ const Router = {
                 </div>`;
             }
         });
+        if (user.role === 'hod') {
+            html += `<div class="nav-heading">HOD</div>`;
+            hodItems.forEach(item => {
+                html += `<div class="nav-item" onclick="Router.navigate('${item.id}')" data-module="${item.id}">
+                    <span>${item.icon}</span> <span>${item.label}</span>
+                </div>`;
+            });
+        }
         nav.innerHTML = html;
     },
     navigate(module) {
@@ -121,6 +136,11 @@ const Router = {
             teams: 'Team Management',
             'hod-dashboard': 'HOD Dashboard',
             'hod-audits': 'HOD Audits',
+            'hod-breakdown': 'Daily Breakdown',
+            'hod-maintenance': 'Maintenance Identifier',
+            'hod-leave': 'Leave Approvals',
+            'hod-daily-mat': 'Daily Material Use',
+            'hod-sub-inv': 'Sub Inventory',
             'quarterly-priorities': 'Quarterly Priorities'
         };
         document.getElementById('pageTitle').textContent = titles[module] || module;
@@ -155,6 +175,11 @@ const Router = {
             teams: renderTeams,
             'hod-dashboard': renderHodDashboard,
             'hod-audits': renderAllHodAudits,
+            'hod-breakdown': renderHodBreakdownPage,
+            'hod-maintenance': renderHodMaintenancePage,
+            'hod-leave': renderHodLeavePage,
+            'hod-daily-mat': renderHodDailyMatPage,
+            'hod-sub-inv': renderHodSubInvPage,
             'employee-dashboard': renderEmployeeDashboard,
             'quarterly-priorities': renderQuarterlyPriorities
         };

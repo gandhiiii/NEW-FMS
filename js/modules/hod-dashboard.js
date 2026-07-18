@@ -1,4 +1,3 @@
-var hodTab = 'overview';
 var _hodCharts = [];
 
 function destroyHodCharts() {
@@ -22,56 +21,11 @@ function renderHodDashboard(container) {
         container.innerHTML = '<div class="empty-state">Access restricted to HOD and Admin</div>';
         return;
     }
-    var isAdmin = user.role === 'admin' || user.isSuperAdmin;
     var dept = user.department || '';
-    var deptMaterials = getDeptMaterials(dept);
-    var isFacility = dept === 'Facility';
-    var tabs = [
-        { id: 'overview', label: 'Dashboard', icon: '📊' },
-        { id: 'problems', label: 'Problems', icon: '🔧' },
-        { id: 'tasks', label: 'Tasks', icon: '✅' },
-        { id: 'materials', label: 'Material Requests', icon: '📦' },
-        { id: 'checklist', label: 'Checklists', icon: '📋' },
-        { id: 'breakdown', label: 'Daily Breakdown', icon: '📉' },
-        { id: 'maintenance', label: 'Maintenance Identifier', icon: '🔄' },
-        { id: 'leave', label: 'Leave Approvals', icon: '🏖️' },
-        { id: 'daily-mat', label: 'Daily Material Use', icon: '📝' },
-        { id: 'reports', label: 'Reports', icon: '📊' },
-        { id: 'audit', label: 'Self Audit', icon: '📋' }
-    ];
-    if (isFacility) tabs.push({ id: 'sub-inv', label: 'Sub Inventory', icon: '📦' });
-
-    var tabBtns = tabs.map(function(t) {
-        return '<button class="tab-btn ' + (hodTab === t.id ? 'active' : '') + '" onclick="switchHodTab(\'' + t.id + '\',this)">' + t.icon + ' ' + t.label + '</button>';
-    }).join('');
-
     container.innerHTML =
         '<div style="margin-bottom:12px;"><h2 style="font-size:18px;font-weight:700;">\uD83C\uDFE2 ' + dept + ' Department - HOD Dashboard</h2></div>' +
-        '<div class="tabs" style="flex-wrap:wrap;gap:4px;">' + tabBtns + '</div>' +
         '<div id="hodContent" style="margin-top:12px;"></div>';
-
     renderHodOverview();
-}
-
-function switchHodTab(tab, btn) {
-    hodTab = tab;
-    document.querySelectorAll('#pageContent .tabs .tab-btn').forEach(function(b) { b.classList.remove('active'); });
-    if (btn) btn.classList.add('active');
-    var fns = {
-        overview: renderHodOverview,
-        problems: renderHodProblems,
-        tasks: renderHodTasks,
-        materials: renderHodMaterials,
-        checklist: renderHodChecklist,
-        breakdown: renderHodBreakdown,
-        maintenance: renderHodMaintenance,
-        leave: renderHodLeave,
-        'daily-mat': renderHodDailyMat,
-        'sub-inv': renderHodSubInv,
-        reports: renderHodReports,
-        audit: renderHodAudit
-    };
-    if (fns[tab]) fns[tab]();
 }
 
 /* ─── Helpers ─── */
@@ -1608,4 +1562,41 @@ function renderAllHodAudits(container) {
     html += '</tbody></table></div></div>';
 
     if (container) container.innerHTML = html;
+}
+
+/* ─── Standalone page wrappers (HOD sidebar items) ─── */
+
+function renderHodBreakdownPage(container) {
+    var user = AUTH.currentUser();
+    if (!user || user.role !== 'hod') { container.innerHTML = '<div class="empty-state">Access restricted</div>'; return; }
+    container.innerHTML = '<div style="margin-bottom:12px;"><h2 style="font-size:18px;font-weight:700;">\uD83D\uDCC9 ' + (user.department||'') + ' Department - Daily Breakdown</h2></div><div id="hodContent"></div>';
+    renderHodBreakdown();
+}
+
+function renderHodMaintenancePage(container) {
+    var user = AUTH.currentUser();
+    if (!user || user.role !== 'hod') { container.innerHTML = '<div class="empty-state">Access restricted</div>'; return; }
+    container.innerHTML = '<div style="margin-bottom:12px;"><h2 style="font-size:18px;font-weight:700;">\uD83D\uDD04 ' + (user.department||'') + ' Department - Maintenance Identifier</h2></div><div id="hodContent"></div>';
+    renderHodMaintenance();
+}
+
+function renderHodLeavePage(container) {
+    var user = AUTH.currentUser();
+    if (!user || user.role !== 'hod') { container.innerHTML = '<div class="empty-state">Access restricted</div>'; return; }
+    container.innerHTML = '<div style="margin-bottom:12px;"><h2 style="font-size:18px;font-weight:700;">\uD83C\uDFD6\uFE0F ' + (user.department||'') + ' Department - Leave Approvals</h2></div><div id="hodContent"></div>';
+    renderHodLeave();
+}
+
+function renderHodDailyMatPage(container) {
+    var user = AUTH.currentUser();
+    if (!user || user.role !== 'hod') { container.innerHTML = '<div class="empty-state">Access restricted</div>'; return; }
+    container.innerHTML = '<div style="margin-bottom:12px;"><h2 style="font-size:18px;font-weight:700;">\uD83D\uDCDD ' + (user.department||'') + ' Department - Daily Material Use</h2></div><div id="hodContent"></div>';
+    renderHodDailyMat();
+}
+
+function renderHodSubInvPage(container) {
+    var user = AUTH.currentUser();
+    if (!user || user.role !== 'hod') { container.innerHTML = '<div class="empty-state">Access restricted</div>'; return; }
+    container.innerHTML = '<div style="margin-bottom:12px;"><h2 style="font-size:18px;font-weight:700;">\uD83D\uDCE6 ' + (user.department||'') + ' Department - Sub Inventory</h2></div><div id="hodContent"></div>';
+    renderHodSubInv();
 }
