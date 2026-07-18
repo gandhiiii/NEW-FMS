@@ -35,7 +35,8 @@ function renderHodDashboard(container) {
         { id: 'breakdown', label: 'Daily Breakdown', icon: '📉' },
         { id: 'maintenance', label: 'Maintenance Identifier', icon: '🔄' },
         { id: 'leave', label: 'Leave Approvals', icon: '🏖️' },
-        { id: 'daily-mat', label: 'Daily Material Use', icon: '📝' }
+        { id: 'daily-mat', label: 'Daily Material Use', icon: '📝' },
+        { id: 'reports', label: 'Reports', icon: '📊' }
     ];
     if (isFacility) tabs.push({ id: 'sub-inv', label: 'Sub Inventory', icon: '📦' });
 
@@ -65,7 +66,8 @@ function switchHodTab(tab, btn) {
         maintenance: renderHodMaintenance,
         leave: renderHodLeave,
         'daily-mat': renderHodDailyMat,
-        'sub-inv': renderHodSubInv
+        'sub-inv': renderHodSubInv,
+        reports: renderHodReports
     };
     if (fns[tab]) fns[tab]();
 }
@@ -934,4 +936,281 @@ function deleteHodSi(id) {
     DB.delete('sub_inventory', id);
     APP.notify('Item deleted', 'success');
     renderHodSubInv();
+}
+
+/* ─── REPORTS TAB ─── */
+
+var _hodReportData = null;
+
+function renderHodReports() {
+    var el = document.getElementById('hodContent');
+    if (!el) return;
+    var user = AUTH.currentUser();
+    var dept = user.department || '';
+    var today = new Date().toISOString().split('T')[0];
+    var firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+
+    var html =
+        '<div style="margin-bottom:12px;"><h3 style="font-size:16px;font-weight:600;">\uD83D\uDCCA ' + dept + ' Department Report</h3></div>' +
+        '<div class="card" style="margin-bottom:16px;">' +
+            '<div class="card-header"><h3>Filter Options</h3></div>' +
+            '<div style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;padding:12px 16px;">' +
+                '<div class="form-group" style="min-width:180px;"><label>From Date</label><input type="date" id="hrFrom" class="form-control" value="' + firstDay + '"></div>' +
+                '<div class="form-group" style="min-width:180px;"><label>To Date</label><input type="date" id="hrTo" class="form-control" value="' + today + '"></div>' +
+                '<button class="btn btn-primary" onclick="generateHodReport()">Generate</button>' +
+            '</div>' +
+        '</div>' +
+        '<div id="hodReportResult"></div>';
+
+    el.innerHTML = html;
+    generateHodReport();
+}
+
+function getHodReportData() {
+    var user = AUTH.currentUser();
+    var from = document.getElementById('hrFrom') ? document.getElementById('hrFrom').value : '';
+    var to = document.getElementById('hrTo') ? document.getElementById('hrTo').value : '';
+    var dept = user.department || '';
+    var dateOk = function(d) {
+        if (!d) return true;
+        try { var dt = new Date(d); if (isNaN(dt.getTime())) return true; if (from && dt < new Date(from)) return false; if (to) { var end = new Date(to); end.setHours(23,59,59,999); if (dt > end) return false; } return true; } catch(e) { return true; }
+    };
+
+    var users = DB.get('users') || [];
+    var deptUsers = users.filter(function(u) { return u.department === dept && u.role !== 'admin' && !u.isSuperAdmin; });
+    var allTasks = (DB.get('tasks') || []).filter(function(t) { return t.department === dept && dateOk(t.createdAt); });
+    var allProblems = (DB.get('problems') || []).filter(function(p) { return (p.department === dept || p.area === dept) && dateOk(p.createdAt); });
+    var allMrs = (DB.get('material_requests') || []).filter(function(m) { return m.department === dept && dateOk(m.createdAt); });
+    var allCls = (DB.get('checklists') || []).filter(function(c) { return c.department === dept && dateOk(c.createdAt); });
+    var allBds = (DB.get('daily_breakdown') || []).filter(function(b) { return b.department === dept && dateOk(b.createdAt); });
+    var allLeaves = (DB.get('leave_requests') || []).filter(function(l) { return l.department === dept && dateOk(l.createdAt); });
+    var allMatUsage = (DB.get('daily_material_usage') || []).filter(function(m) { return m.department === dept && dateOk(m.date); });
+    var allSubInv = (DB.get('sub_inventory') || []).filter(function(s) { return s.department === dept; });
+
+    var tTotal = allTasks.length, tDone = allTasks.filter(function(t) { return t.status === 'completed'; }).length;
+    var tRate = tTotal > 0 ? Math.round(tDone / tTotal * 100) : 0;
+    var pTotal = allProblems.length, pDone = allProblems.filter(function(p) { return p.status === 'resolved'; }).length;
+    var pRate = pTotal > 0 ? Math.round(pDone / pTotal * 100) : 0;
+    var mTotal = allMrs.length, mApproved = allMrs.filter(function(m) { return m.hodStatus === 'approved' || m.status === 'hod_approved'; }).length;
+    var lTotal = allLeaves.length, lApproved = allLeaves.filter(function(l) { return l.status === 'approved'; }).length;
+    var bTotal = allBds.length, bResolved = allBds.filter(function(b) { return b.status === 'resolved'; }).length;
+
+    return {
+        dept: dept, from: from, to: to,
+        users: deptUsers,
+        tasks: allTasks, problems: allProblems, mrs: allMrs, checklists: allCls,
+        breakdowns: allBds, leaves: allLeaves, matUsage: allMatUsage, subInv: allSubInv,
+        tTotal: tTotal, tDone: tDone, tRate: tRate,
+        pTotal: pTotal, pDone: pDone, pRate: pRate,
+        mTotal: mTotal, mApproved: mApproved,
+        lTotal: lTotal, lApproved: lApproved,
+        bTotal: bTotal, bResolved: bResolved
+    };
+}
+
+function generateHodReport() {
+    var el = document.getElementById('hodReportResult');
+    if (!el) return;
+    var data = getHodReportData();
+    _hodReportData = data;
+
+    var html =
+        '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">' +
+            '<button class="btn btn-success" onclick="exportHodReportExcel()">\u2B07 Excel</button>' +
+            '<button class="btn btn-info" onclick="printHodReport()">\uD83D\uDDA8 PDF</button>' +
+            '<button class="btn btn-success" onclick="shareHodReportWhatsApp()" style="background:#25D366;">\uD83D\uDCAC WhatsApp</button>' +
+            '<button class="btn btn-primary" onclick="shareHodReportEmail()">\u2709 Email</button>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px;">' +
+            '<div class="card" style="text-align:center;padding:12px;"><div style="font-size:22px;font-weight:700;color:#1a73e8;">' + data.tTotal + '</div><div style="font-size:11px;color:#888;">Tasks (' + data.tDone + ' done, ' + data.tRate + '%)</div></div>' +
+            '<div class="card" style="text-align:center;padding:12px;"><div style="font-size:22px;font-weight:700;color:#ea4335;">' + data.pTotal + '</div><div style="font-size:11px;color:#888;">Problems (' + data.pDone + ' resolved, ' + data.pRate + '%)</div></div>' +
+            '<div class="card" style="text-align:center;padding:12px;"><div style="font-size:22px;font-weight:700;color:#fbbc04;">' + data.mTotal + '</div><div style="font-size:11px;color:#888;">Materials (' + data.mApproved + ' approved)</div></div>' +
+            '<div class="card" style="text-align:center;padding:12px;"><div style="font-size:22px;font-weight:700;color:#34a853;">' + data.bTotal + '</div><div style="font-size:11px;color:#888;">Breakdowns (' + data.bResolved + ' resolved)</div></div>' +
+            '<div class="card" style="text-align:center;padding:12px;"><div style="font-size:22px;font-weight:700;color:#7b1fa2;">' + data.lTotal + '</div><div style="font-size:11px;color:#888;">Leaves (' + data.lApproved + ' approved)</div></div>' +
+            '<div class="card" style="text-align:center;padding:12px;"><div style="font-size:22px;font-weight:700;color:#00bcd4;">' + data.users.length + '</div><div style="font-size:11px;color:#888;">Team Members</div></div>' +
+        '</div>';
+
+    html += '<div class="card" style="margin-bottom:12px;"><div class="card-header"><h3>\u2705 Tasks (' + data.tTotal + ')</h3></div>' +
+        '<div class="table-responsive" style="max-height:200px;overflow-y:auto;"><table><thead><tr><th>Title</th><th>Assigned To</th><th>Priority</th><th>TAT</th><th>Status</th></tr></thead><tbody>';
+    data.tasks.slice().reverse().slice(0, 20).forEach(function(t) {
+        html += '<tr><td>' + t.title + '</td><td>' + (t.assignedTo || '-') + '</td><td>' + (t.priority || '-') + '</td><td>' + computeTAT(t.createdAt, t.completedAt) + '</td><td>' + APP.getStatusBadge(t.status || 'pending') + '</td></tr>';
+    });
+    if (!data.tasks.length) html += '<tr><td colspan="5" class="empty-state">No tasks</td></tr>';
+    html += '</tbody></table></div></div>';
+
+    html += '<div class="card" style="margin-bottom:12px;"><div class="card-header"><h3>\uD83D\uDD27 Problems (' + data.pTotal + ')</h3></div>' +
+        '<div class="table-responsive" style="max-height:200px;overflow-y:auto;"><table><thead><tr><th>Title</th><th>Area</th><th>Priority</th><th>TAT</th><th>Status</th></tr></thead><tbody>';
+    data.problems.slice().reverse().slice(0, 20).forEach(function(p) {
+        html += '<tr><td>' + p.title + '</td><td>' + (p.area || '-') + '</td><td>' + (p.priority || '-') + '</td><td>' + computeTAT(p.createdAt, p.resolvedAt) + '</td><td>' + APP.getStatusBadge(p.status || 'open') + '</td></tr>';
+    });
+    if (!data.problems.length) html += '<tr><td colspan="5" class="empty-state">No problems</td></tr>';
+    html += '</tbody></table></div></div>';
+
+    html += '<div class="card" style="margin-bottom:12px;"><div class="card-header"><h3>\uD83D\uDCCB Material Requests (' + data.mTotal + ')</h3></div>' +
+        '<div class="table-responsive" style="max-height:200px;overflow-y:auto;"><table><thead><tr><th>Title</th><th>Requested By</th><th>HOD Status</th><th>Store Status</th></tr></thead><tbody>';
+    data.mrs.slice().reverse().slice(0, 20).forEach(function(m) {
+        var hs = m.hodStatus || (m.status === 'approved' ? 'Approved' : 'Pending');
+        var ss = m.storeStatus || (m.status === 'store_approved' ? 'Approved' : 'Pending');
+        html += '<tr><td>' + m.title + '</td><td>' + (m.requestedBy || '-') + '</td><td>' + APP.getStatusBadge(hs) + '</td><td>' + APP.getStatusBadge(ss) + '</td></tr>';
+    });
+    if (!data.mrs.length) html += '<tr><td colspan="4" class="empty-state">No requests</td></tr>';
+    html += '</tbody></table></div></div>';
+
+    el.innerHTML = html;
+}
+
+function exportHodReportExcel() {
+    try {
+        if (typeof XLSX === 'undefined' || !XLSX.utils) { APP.notify('Excel library not loaded', 'error'); return; }
+        var data = _hodReportData || getHodReportData();
+        var wb = XLSX.utils.book_new();
+        var f = function(v) { return v || '-'; };
+
+        // Summary sheet
+        var sumCols = ['Metric', 'Value'];
+        var sumRows = [
+            ['Department', data.dept], ['Period', data.from + ' to ' + data.to], ['Generated', new Date().toLocaleString()], ['', ''],
+            ['Team Members', data.users.length], ['', ''],
+            ['Total Tasks', data.tTotal], ['Tasks Completed', data.tDone], ['Task Completion Rate', data.tRate + '%'], ['', ''],
+            ['Total Problems', data.pTotal], ['Problems Resolved', data.pDone], ['Problem Resolution Rate', data.pRate + '%'], ['', ''],
+            ['Material Requests', data.mTotal], ['Approved', data.mApproved], ['', ''],
+            ['Breakdowns Reported', data.bTotal], ['Breakdowns Resolved', data.bResolved], ['', ''],
+            ['Leave Requests', data.lTotal], ['Leaves Approved', data.lApproved]
+        ];
+        var ws1 = XLSX.utils.aoa_to_sheet([sumCols].concat(sumRows));
+        XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
+
+        // Tasks sheet
+        if (data.tasks.length) {
+            var tCols = ['Title', 'Assigned To', 'Priority', 'Deadline', 'TAT', 'Status', 'Created'];
+            var tRows = data.tasks.map(function(t) {
+                return [f(t.title), f(t.assignedTo), f(t.priority), t.deadline ? APP.formatDate(t.deadline) : '-', computeTAT(t.createdAt, t.completedAt), f(t.status), APP.formatDate(t.createdAt)];
+            });
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([tCols].concat(tRows)), 'Tasks');
+        }
+
+        // Problems sheet
+        if (data.problems.length) {
+            var pCols = ['Title', 'Area', 'Priority', 'TAT', 'Status', 'Created'];
+            var pRows = data.problems.map(function(p) {
+                return [f(p.title), f(p.area), f(p.priority), computeTAT(p.createdAt, p.resolvedAt), f(p.status || 'open'), APP.formatDate(p.createdAt)];
+            });
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([pCols].concat(pRows)), 'Problems');
+        }
+
+        // Material Requests sheet
+        if (data.mrs.length) {
+            var mCols = ['Title', 'Requested By', 'HOD Status', 'Store Status', 'Created'];
+            var mRows = data.mrs.map(function(m) {
+                var hs = m.hodStatus || (m.status === 'approved' ? 'Approved' : 'Pending');
+                var ss = m.storeStatus || (m.status === 'store_approved' ? 'Approved' : 'Pending');
+                return [f(m.title), f(m.requestedBy || '-'), hs, ss, APP.formatDate(m.createdAt)];
+            });
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([mCols].concat(mRows)), 'Material Requests');
+        }
+
+        // Breakdowns sheet
+        if (data.breakdowns.length) {
+            var bCols = ['Title', 'Area', 'Reported By', 'TAT', 'Status', 'Date'];
+            var bRows = data.breakdowns.map(function(b) {
+                return [f(b.title), f(b.area), f(b.reportedBy), computeTAT(b.createdAt, b.resolvedAt), f(b.status || 'open'), b.date ? APP.formatDate(b.date) : '-'];
+            });
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([bCols].concat(bRows)), 'Breakdowns');
+        }
+
+        var wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        var url = URL.createObjectURL(new Blob([wbout], { type: 'application/octet-stream' }));
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = data.dept + '_Report_' + new Date().toISOString().split('T')[0] + '.xlsx';
+        document.body.appendChild(link); link.click();
+        setTimeout(function() { document.body.removeChild(link); URL.revokeObjectURL(url); }, 100);
+        APP.notify('Excel report downloaded', 'success');
+    } catch (e) { console.error(e); APP.notify('Export failed', 'error'); }
+}
+
+function printHodReport() {
+    var data = _hodReportData || getHodReportData();
+    var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + data.dept + ' Report</title>';
+    html += '<style>' +
+        '*{box-sizing:border-box;}body{font-family:"Segoe UI",Arial,sans-serif;margin:30px;color:#222;}' +
+        'h1{font-size:24px;color:#1a73e8;}h2{font-size:16px;margin:20px 0 8px;color:#333;border-left:4px solid #1a73e8;padding-left:10px;}' +
+        'table{width:100%;border-collapse:collapse;margin-bottom:20px;font-size:11px;}' +
+        'th{background:#1a73e8;color:#fff;padding:8px 10px;text-align:left;}' +
+        'td{border:1px solid #ddd;padding:6px 10px;}tr:nth-child(even){background:#f8f9fa;}' +
+        '.card{display:inline-block;margin:8px;padding:14px;background:#f0f4ff;border-radius:8px;text-align:center;min-width:110px;}' +
+        '.num{font-size:24px;font-weight:700;color:#1a73e8;}.lbl{font-size:11px;color:#888;}' +
+        '@media print{body{margin:15mm;}th{background:#1a73e8!important;color:#fff!important;-webkit-print-color-adjust:exact;}}' +
+        '</style></head><body>';
+    html += '<h1>' + data.dept + ' Department Report</h1>';
+    html += '<div style="font-size:12px;color:#888;margin-bottom:16px;">Period: ' + data.from + ' to ' + data.to + ' | Generated: ' + new Date().toLocaleString() + '</div>';
+    html += '<div style="text-align:center;">' +
+        '<div class="card"><div class="num">' + data.tTotal + '</div><div class="lbl">Tasks (' + data.tRate + '%)</div></div>' +
+        '<div class="card"><div class="num">' + data.pTotal + '</div><div class="lbl">Problems (' + data.pRate + '%)</div></div>' +
+        '<div class="card"><div class="num">' + data.mTotal + '</div><div class="lbl">Materials</div></div>' +
+        '<div class="card"><div class="num">' + data.bTotal + '</div><div class="lbl">Breakdowns</div></div>' +
+        '<div class="card"><div class="num">' + data.users.length + '</div><div class="lbl">Team</div></div>' +
+    '</div>';
+
+    function printTable(title, cols, rows) {
+        if (!rows.length) return;
+        html += '<h2>' + title + ' (' + rows.length + ')</h2><table><thead><tr>' + cols.map(function(c) { return '<th>' + c + '</th>'; }).join('') + '</tr></thead><tbody>';
+        rows.slice(0, 50).forEach(function(r) { html += '<tr>' + r.map(function(c) { return '<td>' + c + '</td>'; }).join('') + '</tr>'; });
+        html += '</tbody></table>';
+    }
+
+    printTable('Tasks', ['Title','Assigned To','Priority','TAT','Status'], data.tasks.map(function(t) { return [t.title, t.assignedTo || '-', t.priority || '-', computeTAT(t.createdAt, t.completedAt), t.status || 'pending']; }));
+    printTable('Problems', ['Title','Area','Priority','TAT','Status'], data.problems.map(function(p) { return [p.title, p.area || '-', p.priority || '-', computeTAT(p.createdAt, p.resolvedAt), p.status || 'open']; }));
+    printTable('Material Requests', ['Title','Requested By','HOD Status','Store Status'], data.mrs.map(function(m) { return [m.title, m.requestedBy || '-', m.hodStatus || 'Pending', m.storeStatus || 'Pending']; }));
+    printTable('Breakdowns', ['Title','Area','Reported By','Status'], data.breakdowns.map(function(b) { return [b.title, b.area || '-', b.reportedBy || '-', b.status || 'open']; }));
+
+    html += '<div style="text-align:center;font-size:10px;color:#aaa;margin-top:30px;border-top:1px solid #eee;padding-top:10px;">HMS ' + data.dept + ' Report — Confidential</div></body></html>';
+
+    var w = window.open('_blank');
+    if (!w) { APP.notify('Please allow popups', 'error'); return; }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(function() { w.print(); }, 500);
+}
+
+function shareHodReportWhatsApp() {
+    var data = _hodReportData || getHodReportData();
+    var text = '*' + data.dept + ' Department Report*';
+    text += '\nPeriod: ' + data.from + ' to ' + data.to;
+    text += '\n\n*Summary*';
+    text += '\n- Team Members: ' + data.users.length;
+    text += '\n- Tasks: ' + data.tDone + '/' + data.tTotal + ' (' + data.tRate + '%)';
+    text += '\n- Problems: ' + data.pDone + '/' + data.pTotal + ' (' + data.pRate + '%)';
+    text += '\n- Materials Approved: ' + data.mApproved + '/' + data.mTotal;
+    text += '\n- Breakdowns Resolved: ' + data.bResolved + '/' + data.bTotal;
+    text += '\n- Leaves Approved: ' + data.lApproved + '/' + data.lTotal;
+    text += '\n\n*Recent Tasks*';
+    data.tasks.slice(-5).reverse().forEach(function(t) { text += '\n- ' + t.title + ' (' + t.status + ')'; });
+    text += '\n\n*Recent Problems*';
+    data.problems.slice(-5).reverse().forEach(function(p) { text += '\n- ' + p.title + ' (' + (p.status || 'open') + ')'; });
+    text += '\n\nGenerated: ' + new Date().toLocaleString();
+    text += '\nDownload full report from HMS dashboard.';
+    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+}
+
+function shareHodReportEmail() {
+    var data = _hodReportData || getHodReportData();
+    var subject = data.dept + ' Department Report - ' + data.from + ' to ' + data.to;
+    var body = data.dept + ' Department Report\n';
+    body += 'Period: ' + data.from + ' to ' + data.to + '\n';
+    body += 'Generated: ' + new Date().toLocaleString() + '\n\n';
+    body += 'SUMMARY\n';
+    body += '- Team Members: ' + data.users.length + '\n';
+    body += '- Tasks: ' + data.tDone + '/' + data.tTotal + ' (' + data.tRate + '%)\n';
+    body += '- Problems: ' + data.pDone + '/' + data.pTotal + ' (' + data.pRate + '%)\n';
+    body += '- Materials Approved: ' + data.mApproved + '/' + data.mTotal + '\n';
+    body += '- Breakdowns Resolved: ' + data.bResolved + '/' + data.bTotal + '\n';
+    body += '- Leaves Approved: ' + data.lApproved + '/' + data.lTotal + '\n\n';
+    body += '--- TASKS ---\n';
+    data.tasks.slice(-10).reverse().forEach(function(t) { body += t.title + ' | ' + (t.assignedTo || '-') + ' | ' + (t.status || '-') + '\n'; });
+    body += '\n--- PROBLEMS ---\n';
+    data.problems.slice(-10).reverse().forEach(function(p) { body += p.title + ' | ' + (p.area || '-') + ' | ' + (p.status || 'open') + '\n'; });
+    body += '\nDownload full Excel report from HMS dashboard.';
+    window.open('mailto:?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body), '_blank');
 }
