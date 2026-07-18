@@ -84,7 +84,7 @@ function showTeamForm(data) {
     );
 }
 
-function saveTeam(editId) {
+async function saveTeam(editId) {
     var name = document.getElementById('teamName').value.trim();
     var dept = document.getElementById('teamDept').value;
     var hodId = document.getElementById('teamHod').value;
@@ -108,6 +108,9 @@ function saveTeam(editId) {
         DB.add('teams', { name: name, department: dept, hodId: hodId, hodName: hodUser ? hodUser.fullName : '', members: [] });
         APP.notify('Team created', 'success');
     }
+    if (typeof SYNC !== 'undefined' && SYNC._ready && typeof SYNC._flush === 'function') {
+        await SYNC._flush('teams').catch(function() {});
+    }
     renderTeamList();
     return true;
 }
@@ -118,11 +121,14 @@ function editTeam(id) {
     if (team) showTeamForm(team);
 }
 
-function deleteTeam(id) {
+async function deleteTeam(id) {
     if (!confirm('Delete this team?')) return;
     var teams = (DB.get('teams') || []).filter(function(t) { return t.id !== id; });
     DB.set('teams', teams);
     APP.notify('Team deleted', 'success');
+    if (typeof SYNC !== 'undefined' && SYNC._ready && typeof SYNC._flush === 'function') {
+        await SYNC._flush('teams').catch(function() {});
+    }
     renderTeamList();
 }
 
@@ -173,33 +179,44 @@ function showAddMember(teamId) {
         return;
     }
     var opts = available.map(function(u) { return '<option value="' + u.id + '">' + u.fullName + ' (' + (u.role || '') + ')</option>'; }).join('');
-    openFormModal('Add Member to ' + team.name,
-        '<div class="form-group"><label>Select Employee</label><select id="newMemberId" class="form-control">' + opts + '</select></div>',
+    openFormModal('Add Members to ' + team.name,
+        '<div class="form-group"><label>Select Employees (hold Ctrl to pick multiple)</label><select id="newMemberId" class="form-control" multiple style="height:180px;">' + opts + '</select></div>',
         'addMember(\'' + teamId + '\')'
     );
 }
 
-function addMember(teamId) {
-    var userId = document.getElementById('newMemberId').value;
-    if (!userId) { APP.notify('Select a member', 'error'); return false; }
-    var user = (DB.get('users') || []).find(function(u) { return u.id === userId; });
-    if (!user) return false;
+async function addMember(teamId) {
+    var sel = document.getElementById('newMemberId');
+    if (!sel) { APP.notify('Select at least one member', 'error'); return false; }
+    var selected = [];
+    for (var i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].selected) selected.push(sel.options[i].value);
+    }
+    if (!selected.length) { APP.notify('Select at least one member', 'error'); return false; }
     var teams = DB.get('teams') || [];
     var team = teams.find(function(t) { return t.id === teamId; });
     if (!team) return false;
     if (!team.members) team.members = [];
-    if (team.members.some(function(m) { return m.userId === userId; })) {
-        APP.notify('Already a member', 'error');
-        return false;
+    var count = 0;
+    for (var j = 0; j < selected.length; j++) {
+        var userId = selected[j];
+        if (team.members.some(function(m) { return m.userId === userId; })) continue;
+        var user = (DB.get('users') || []).find(function(u) { return u.id === userId; });
+        if (!user) continue;
+        team.members.push({ userId: userId, fullName: user.fullName, role: user.role || 'employee', addedAt: new Date().toISOString() });
+        count++;
     }
-    team.members.push({ userId: userId, fullName: user.fullName, role: user.role || 'employee', addedAt: new Date().toISOString() });
+    if (count === 0) { APP.notify('Members already exist or not found', 'error'); return false; }
     DB.set('teams', teams);
-    APP.notify('Member added', 'success');
+    APP.notify(count + ' member(s) added', 'success');
+    if (typeof SYNC !== 'undefined' && SYNC._ready && typeof SYNC._flush === 'function') {
+        await SYNC._flush('teams').catch(function() {});
+    }
     renderMemberList();
     return true;
 }
 
-function removeMember(teamId, userId) {
+async function removeMember(teamId, userId) {
     if (!confirm('Remove this member?')) return;
     var teams = DB.get('teams') || [];
     var team = teams.find(function(t) { return t.id === teamId; });
@@ -209,6 +226,10 @@ function removeMember(teamId, userId) {
     DB.set('team_tasks', tasks.filter(function(t) { return !(t.teamId === teamId && t.assignedTo === userId); }));
     DB.set('teams', teams);
     APP.notify('Member removed', 'success');
+    if (typeof SYNC !== 'undefined' && SYNC._ready && typeof SYNC._flush === 'function') {
+        await SYNC._flush('teams').catch(function() {});
+        await SYNC._flush('team_tasks').catch(function() {});
+    }
     renderMemberList();
 }
 

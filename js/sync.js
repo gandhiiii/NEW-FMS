@@ -66,6 +66,8 @@ const SYNC = {
         }
     },
 
+    _pendingWrites: {},
+
     _patchDB() {
         const _origSet = DB.set.bind(DB);
         const self = this;
@@ -73,20 +75,34 @@ const SYNC = {
         DB.set = function (key, data) {
             _origSet(key, data);
             if (self._ready && !skipKeys.includes(key)) {
-                self._write(key, data);
+                self._pendingWrites[key] = self._write(key, data);
             }
         };
     },
 
+    async _flush(key) {
+        while (this._pendingWrites[key]) {
+            try { await this._pendingWrites[key]; } catch (e) {}
+            delete this._pendingWrites[key];
+        }
+    },
+
     async _write(key, data) {
         const payload = { items: data, updatedAt: Date.now() };
-        await Promise.all([
-            this._db.collection('hms_data').doc(key).set(payload).catch(e => console.warn('FS write err:', key, e)),
-            this._rtdb.ref('hms_data/' + key).set(payload).catch(e => console.warn('RTDB write err:', key, e))
-        ]);
+        try {
+            await Promise.all([
+                this._db.collection('hms_data').doc(key).set(payload),
+                this._rtdb.ref('hms_data/' + key).set(payload)
+            ]);
+        } catch (e) {
+            console.warn('SYNC write err:', key, e);
+        } finally {
+            delete this._pendingWrites[key];
+        }
     },
 
     _applyRemoteData(key, items) {
+        if (this._pendingWrites[key]) return false;
         const localRaw = localStorage.getItem('hms_' + key);
         const serverStr = JSON.stringify(items);
         if (localRaw !== serverStr) {

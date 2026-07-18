@@ -1265,12 +1265,14 @@ function renderHodAudit() {
     items.forEach(function(item, i) {
         var checked = item.done ? 'checked' : '';
         var disabled = existing && existing.submitted ? 'disabled' : '';
-        html += '<label style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0;cursor:pointer;">' +
+        html += '<label data-aindex="' + i + '" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0;cursor:pointer;">' +
             '<input type="checkbox" ' + checked + ' ' + disabled + ' onchange="toggleAuditItem(' + i + ',this.checked)" style="width:18px;height:18px;">' +
             '<span style="font-size:13px;' + (item.done ? 'text-decoration:line-through;color:#888;' : '') + '">' + item.label + '</span>' +
+            (!disabled ? '<span style="margin-left:auto;color:#ea4335;cursor:pointer;font-size:16px;font-weight:600;" onclick="removeAuditItem(' + i + ')">\u00d7</span>' : '') +
         '</label>';
     });
-    html += '</div>';
+    html += '</div>' +
+        (!(existing && existing.submitted) ? '<div style="margin-top:8px;"><button class="btn btn-sm btn-outline" onclick="addAuditItem()">+ Add Item</button></div>' : '');
 
     html += '<div class="form-group" style="margin-top:12px;"><label>Work Notes / Comments</label>' +
         '<textarea id="auditNotes" class="form-control" rows="3" ' + (existing && existing.submitted ? 'disabled' : '') + '>' + (existing ? (existing.notes || '') : '') + '</textarea></div>';
@@ -1307,10 +1309,44 @@ function renderHodAudit() {
     el.innerHTML = html;
 }
 
-var _auditDraft = null;
+function getAuditItems() {
+    var labels = document.querySelectorAll('#hodAuditItems label');
+    var checkboxes = document.querySelectorAll('#hodAuditItems input[type="checkbox"]');
+    var items = [];
+    checkboxes.forEach(function(cb, i) {
+        var labelEl = labels[i];
+        var span = labelEl ? labelEl.querySelector('span') : null;
+        items.push({ label: span ? span.textContent : 'Item ' + (i + 1), done: cb.checked });
+    });
+    return items;
+}
+
+function saveAuditDraft(items) {
+    var user = AUTH.currentUser();
+    var today = new Date().toISOString().split('T')[0];
+    var audits = DB.get('hod_audit') || [];
+    var existing = audits.filter(function(a) { return a.date === today && a.hodId === user.id && !a.submitted; });
+    if (existing.length > 0) {
+        existing[0].items = items;
+        existing[0].notes = document.getElementById('auditNotes') ? document.getElementById('auditNotes').value : '';
+        DB.set('hod_audit', audits);
+    } else {
+        audits.push({
+            id: 'audit_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
+            hodId: user.id,
+            hodName: user.fullName,
+            department: user.department || '',
+            date: today,
+            items: items,
+            notes: document.getElementById('auditNotes') ? document.getElementById('auditNotes').value : '',
+            submitted: false,
+            submittedAt: null
+        });
+        DB.set('hod_audit', audits);
+    }
+}
 
 function toggleAuditItem(index, checked) {
-    if (!_auditDraft) _auditDraft = { items: [] };
     var labelsEl = document.querySelectorAll('#hodAuditItems label span');
     var checkboxes = document.querySelectorAll('#hodAuditItems input[type="checkbox"]');
     if (checkboxes[index]) {
@@ -1321,28 +1357,36 @@ function toggleAuditItem(index, checked) {
             span.style.color = checked ? '#888' : '#222';
         }
     }
-    var user = AUTH.currentUser();
-    var today = new Date().toISOString().split('T')[0];
-    var audits = DB.get('hod_audit') || [];
-    var existing = audits.filter(function(a) { return a.date === today && a.hodId === user.id && !a.submitted; });
-    if (existing.length > 0) {
-        var items = existing[0].items || AUDIT_ITEMS.map(function(l) { return { label: l, done: false }; });
-        if (items[index]) items[index].done = checked;
-        existing[0].items = items;
-        DB.set('hod_audit', audits);
+    saveAuditDraft(getAuditItems());
+}
+
+function addAuditItem() {
+    var label = prompt('Enter audit item text:');
+    if (!label || !label.trim()) return;
+    label = label.trim();
+    var items = getAuditItems();
+    items.push({ label: label, done: false });
+    saveAuditDraft(items);
+    renderHodAudit();
+}
+
+function removeAuditItem(index) {
+    if (!confirm('Remove this audit item?')) return;
+    var items = getAuditItems();
+    if (items.length <= 1) {
+        APP.notify('Cannot remove the last item', 'error');
+        return;
     }
+    items.splice(index, 1);
+    saveAuditDraft(items);
+    renderHodAudit();
 }
 
 function submitHodAudit() {
     var user = AUTH.currentUser();
     var today = new Date().toISOString().split('T')[0];
     var notes = document.getElementById('auditNotes') ? document.getElementById('auditNotes').value.trim() : '';
-    var checkboxes = document.querySelectorAll('#hodAuditItems input[type="checkbox"]');
-    var labels = document.querySelectorAll('#hodAuditItems label span');
-    var items = [];
-    checkboxes.forEach(function(cb, i) {
-        items.push({ label: labels[i] ? labels[i].textContent : AUDIT_ITEMS[i] || 'Item ' + (i + 1), done: cb.checked });
-    });
+    var items = getAuditItems();
     var doneCount = items.filter(function(i) { return i.done; }).length;
     if (doneCount === 0) {
         APP.notify('Check at least one item', 'error');
@@ -1357,6 +1401,7 @@ function submitHodAudit() {
         existing[0].submittedAt = new Date().toISOString();
     } else {
         audits.push({
+            id: 'audit_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
             hodId: user.id,
             hodName: user.fullName,
             department: user.department || '',
@@ -1373,7 +1418,7 @@ function submitHodAudit() {
 }
 
 function resetHodAudit() {
-    if (!confirm('Reset today\'s audit and re-do?')) return;
+    if (!confirm('Reset today\'s audit to default items?')) return;
     var user = AUTH.currentUser();
     var today = new Date().toISOString().split('T')[0];
     var audits = DB.get('hod_audit') || [];
@@ -1385,7 +1430,7 @@ function resetHodAudit() {
         existing[0].submittedAt = null;
         DB.set('hod_audit', audits);
     }
-    APP.notify('Audit reset', 'info');
+    APP.notify('Audit reset to defaults', 'info');
     renderHodAudit();
 }
 
