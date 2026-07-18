@@ -605,6 +605,14 @@ const APP = {
             'hod-leave': renderHodLeavePage,
             'hod-daily-mat': renderHodDailyMatPage,
             'hod-sub-inv': renderHodSubInvPage,
+            'emp-tasks': renderEmpTasksPage,
+            'emp-problems': renderEmpProblemsPage,
+            'emp-checklists': renderEmpChecklistsPage,
+            'emp-materials': renderEmpMaterialsPage,
+            'emp-lifecycle': renderEmpLifecyclePage,
+            'emp-projects': renderEmpProjectsPage,
+            'emp-reports': renderEmpReportsPage,
+            'emp-performance': renderEmpPerformancePage,
             'employee-dashboard': renderEmployeeDashboard,
             'quarterly-priorities': renderQuarterlyPriorities
         };

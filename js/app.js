@@ -88,6 +88,16 @@ const Router = {
             { id: 'hod-daily-mat', label: 'Daily Material Use', icon: '📝' },
             { id: 'hod-sub-inv', label: 'Sub Inventory', icon: '📦' }
         ];
+        const empItems = [
+            { id: 'emp-tasks', label: 'My Tasks', icon: '📝' },
+            { id: 'emp-problems', label: 'My Problems', icon: '🔧' },
+            { id: 'emp-checklists', label: 'My Checklists', icon: '✅' },
+            { id: 'emp-materials', label: 'My Materials', icon: '📦' },
+            { id: 'emp-lifecycle', label: 'Lifecycle', icon: '🔋' },
+            { id: 'emp-projects', label: 'My Projects', icon: '📋' },
+            { id: 'emp-reports', label: 'My Reports', icon: '📋' },
+            { id: 'emp-performance', label: 'Performance', icon: '📊' }
+        ];
         let html = '';
         items.forEach(item => {
             if (AUTH.hasPermission(user, item.permission)) {
@@ -99,6 +109,14 @@ const Router = {
         if (user.role === 'hod') {
             html += `<div class="nav-heading">HOD</div>`;
             hodItems.forEach(item => {
+                html += `<div class="nav-item" onclick="Router.navigate('${item.id}')" data-module="${item.id}">
+                    <span>${item.icon}</span> <span>${item.label}</span>
+                </div>`;
+            });
+        }
+        if (user.role === 'employee' || user.role === 'ambulance_employee') {
+            html += `<div class="nav-heading">Employee</div>`;
+            empItems.forEach(item => {
                 html += `<div class="nav-item" onclick="Router.navigate('${item.id}')" data-module="${item.id}">
                     <span>${item.icon}</span> <span>${item.label}</span>
                 </div>`;
@@ -141,6 +159,14 @@ const Router = {
             'hod-leave': 'Leave Approvals',
             'hod-daily-mat': 'Daily Material Use',
             'hod-sub-inv': 'Sub Inventory',
+            'emp-tasks': 'My Tasks',
+            'emp-problems': 'My Problems',
+            'emp-checklists': 'My Checklists',
+            'emp-materials': 'My Materials',
+            'emp-lifecycle': 'Lifecycle',
+            'emp-projects': 'My Projects',
+            'emp-reports': 'My Reports',
+            'emp-performance': 'Performance',
             'quarterly-priorities': 'Quarterly Priorities'
         };
         document.getElementById('pageTitle').textContent = titles[module] || module;
@@ -180,6 +206,14 @@ const Router = {
             'hod-leave': renderHodLeavePage,
             'hod-daily-mat': renderHodDailyMatPage,
             'hod-sub-inv': renderHodSubInvPage,
+            'emp-tasks': renderEmpTasksPage,
+            'emp-problems': renderEmpProblemsPage,
+            'emp-checklists': renderEmpChecklistsPage,
+            'emp-materials': renderEmpMaterialsPage,
+            'emp-lifecycle': renderEmpLifecyclePage,
+            'emp-projects': renderEmpProjectsPage,
+            'emp-reports': renderEmpReportsPage,
+            'emp-performance': renderEmpPerformancePage,
             'employee-dashboard': renderEmployeeDashboard,
             'quarterly-priorities': renderQuarterlyPriorities
         };

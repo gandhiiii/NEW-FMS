@@ -1,12 +1,10 @@
-var _empSection = 'overview';
 var _empClFilter = 'daily';
 var _empData = {};
 
-function renderEmployeeDashboard(container) {
+function setupEmpData() {
     var user = AUTH.currentUser();
-    if (!user) { container.innerHTML = '<div class="empty-state">Not logged in</div>'; return; }
+    if (!user) return;
     var dept = user.department || 'Maintenance';
-
     var tasks = DB.get('tasks') || [];
     var problems = DB.get('problems') || [];
     var requests = DB.get('material_requests') || [];
@@ -14,7 +12,6 @@ function renderEmployeeDashboard(container) {
     var inventory = DB.get('inventory') || [];
     var projects = DB.get('projects') || [];
     var reports = DB.get('reports') || [];
-
     var u = user.fullName || user.username;
     _empData = {
         user: user, dept: dept,
@@ -26,59 +23,92 @@ function renderEmployeeDashboard(container) {
         deptInventory: inventory,
         myReports: reports.filter(function(r) { return r.createdBy === user.username || r.createdBy === user.fullName; })
     };
+}
 
+function renderEmployeeDashboard(container) {
+    var user = AUTH.currentUser();
+    if (!user) { container.innerHTML = '<div class="empty-state">Not logged in</div>'; return; }
+    setupEmpData();
+    var dept = user.department || 'Maintenance';
     container.innerHTML = ''
         + '<div class="flex-between mb-3" style="align-items:center;">'
         + '<h3 style="font-size:20px;font-weight:600;">My Dashboard</h3>'
         + '<div style="display:flex;align-items:center;gap:8px;"><span class="badge badge-info">' + dept + '</span><span style="font-size:14px;font-weight:600;">' + user.fullName + '</span></div></div>'
-
-        + '<div class="emp-layout" style="display:flex;gap:16px;align-items:flex-start;">'
-        + '<div class="emp-sidebar" style="width:200px;min-width:200px;background:var(--card);border-radius:var(--radius);border:1px solid var(--border);overflow:hidden;">'
-        + '<div class="emp-nav-item active" onclick="empNav(\'overview\',this)" data-sec="overview" style="padding:12px 16px;cursor:pointer;border-bottom:1px solid var(--border);font-size:14px;display:flex;align-items:center;gap:8px;transition:0.2s;">📊 Overview</div>'
-        + '<div class="emp-nav-item" onclick="empNav(\'tasks\',this)" data-sec="tasks" style="padding:12px 16px;cursor:pointer;border-bottom:1px solid var(--border);font-size:14px;display:flex;align-items:center;gap:8px;transition:0.2s;">📝 Tasks <span class="badge badge-primary" style="margin-left:auto;font-size:10px;">' + _empData.myTasks.length + '</span></div>'
-        + '<div class="emp-nav-item" onclick="empNav(\'problems\',this)" data-sec="problems" style="padding:12px 16px;cursor:pointer;border-bottom:1px solid var(--border);font-size:14px;display:flex;align-items:center;gap:8px;transition:0.2s;">🔧 Problems <span class="badge badge-danger" style="margin-left:auto;font-size:10px;">' + _empData.myProblems.filter(function(p){return p.status!=='resolved';}).length + '</span></div>'
-        + '<div class="emp-nav-item" onclick="empNav(\'checklists\',this)" data-sec="checklists" style="padding:12px 16px;cursor:pointer;border-bottom:1px solid var(--border);font-size:14px;display:flex;align-items:center;gap:8px;transition:0.2s;">✅ Checklists</div>'
-        + '<div class="emp-nav-item" onclick="empNav(\'requests\',this)" data-sec="requests" style="padding:12px 16px;cursor:pointer;border-bottom:1px solid var(--border);font-size:14px;display:flex;align-items:center;gap:8px;transition:0.2s;">📦 Materials <span class="badge badge-warning" style="margin-left:auto;font-size:10px;">' + _empData.myRequests.filter(function(r){return r.status==='pending';}).length + '</span></div>'
-        + '<div class="emp-nav-item" onclick="empNav(\'lifecycle\',this)" data-sec="lifecycle" style="padding:12px 16px;cursor:pointer;border-bottom:1px solid var(--border);font-size:14px;display:flex;align-items:center;gap:8px;transition:0.2s;">🔋 Lifecycle <span class="badge badge-info" style="margin-left:auto;font-size:10px;">' + _empData.deptInventory.length + '</span></div>'
-        + '<div class="emp-nav-item" onclick="empNav(\'projects\',this)" data-sec="projects" style="padding:12px 16px;cursor:pointer;border-bottom:1px solid var(--border);font-size:14px;display:flex;align-items:center;gap:8px;transition:0.2s;">📋 Projects <span class="badge badge-primary" style="margin-left:auto;font-size:10px;">' + _empData.myProjects.length + '</span></div>'
-        + '<div class="emp-nav-item" onclick="empNav(\'reports\',this)" data-sec="reports" style="padding:12px 16px;cursor:pointer;border-bottom:1px solid var(--border);font-size:14px;display:flex;align-items:center;gap:8px;transition:0.2s;">📋 Reports</div>'
-        + '<div class="emp-nav-item" onclick="empNav(\'performance\',this)" data-sec="performance" style="padding:12px 16px;cursor:pointer;font-size:14px;display:flex;align-items:center;gap:8px;transition:0.2s;">📊 Performance</div>'
-        + '</div>'
-
-        + '<div class="emp-content" style="flex:1;min-width:0;" id="empContent">'
-        + '<div id="empSectionOverview"></div>'
-        + '<div id="empSectionTasks" style="display:none;"></div>'
-        + '<div id="empSectionProblems" style="display:none;"></div>'
-        + '<div id="empSectionChecklists" style="display:none;"></div>'
-        + '<div id="empSectionRequests" style="display:none;"></div>'
-        + '<div id="empSectionLifecycle" style="display:none;"></div>'
-        + '<div id="empSectionProjects" style="display:none;"></div>'
-        + '<div id="empSectionReports" style="display:none;"></div>'
-        + '<div id="empSectionPerformance" style="display:none;"></div>'
-        + '</div></div>';
-
-    _empSection = 'overview';
+        + '<div id="empSectionOverview"></div>';
     renderEmpOverview();
+}
+
+/* ─── Standalone page wrappers (Employee sidebar items) ─── */
+
+function renderEmpTasksPage(container) {
+    var user = AUTH.currentUser();
+    if (!user) { container.innerHTML = '<div class="empty-state">Not logged in</div>'; return; }
+    setupEmpData();
+    container.innerHTML = '<div class="flex-between mb-3" style="align-items:center;"><h3 style="font-size:20px;font-weight:600;">\uD83D\uDCDD My Tasks</h3><div style="display:flex;align-items:center;gap:8px;"><span class="badge badge-info">' + (user.department||'') + '</span><span style="font-size:14px;font-weight:600;">' + user.fullName + '</span></div></div><div id="empSectionTasks"></div>';
     renderEmpTasksSec();
+}
+
+function renderEmpProblemsPage(container) {
+    var user = AUTH.currentUser();
+    if (!user) { container.innerHTML = '<div class="empty-state">Not logged in</div>'; return; }
+    setupEmpData();
+    container.innerHTML = '<div class="flex-between mb-3" style="align-items:center;"><h3 style="font-size:20px;font-weight:600;">\uD83D\uDD27 My Problems</h3><div style="display:flex;align-items:center;gap:8px;"><span class="badge badge-info">' + (user.department||'') + '</span><span style="font-size:14px;font-weight:600;">' + user.fullName + '</span></div></div><div id="empSectionProblems"></div>';
     renderEmpProblemsSec();
+}
+
+function renderEmpChecklistsPage(container) {
+    var user = AUTH.currentUser();
+    if (!user) { container.innerHTML = '<div class="empty-state">Not logged in</div>'; return; }
+    setupEmpData();
+    container.innerHTML = '<div class="flex-between mb-3" style="align-items:center;"><h3 style="font-size:20px;font-weight:600;">\u2705 My Checklists</h3><div style="display:flex;align-items:center;gap:8px;"><span class="badge badge-info">' + (user.department||'') + '</span><span style="font-size:14px;font-weight:600;">' + user.fullName + '</span></div></div><div id="empSectionChecklists"></div>';
     renderEmpChecklistsSec();
+}
+
+function renderEmpMaterialsPage(container) {
+    var user = AUTH.currentUser();
+    if (!user) { container.innerHTML = '<div class="empty-state">Not logged in</div>'; return; }
+    setupEmpData();
+    container.innerHTML = '<div class="flex-between mb-3" style="align-items:center;"><h3 style="font-size:20px;font-weight:600;">\uD83D\uDCE6 My Materials</h3><div style="display:flex;align-items:center;gap:8px;"><span class="badge badge-info">' + (user.department||'') + '</span><span style="font-size:14px;font-weight:600;">' + user.fullName + '</span></div></div><div id="empSectionRequests"></div>';
     renderEmpRequestsSec();
+}
+
+function renderEmpLifecyclePage(container) {
+    var user = AUTH.currentUser();
+    if (!user) { container.innerHTML = '<div class="empty-state">Not logged in</div>'; return; }
+    setupEmpData();
+    container.innerHTML = '<div class="flex-between mb-3" style="align-items:center;"><h3 style="font-size:20px;font-weight:600;">\uD83D\uDD0B Product Lifecycle</h3><div style="display:flex;align-items:center;gap:8px;"><span class="badge badge-info">' + (user.department||'') + '</span><span style="font-size:14px;font-weight:600;">' + user.fullName + '</span></div></div><div id="empSectionLifecycle"></div>';
     renderEmpLifecycleSec();
+}
+
+function renderEmpProjectsPage(container) {
+    var user = AUTH.currentUser();
+    if (!user) { container.innerHTML = '<div class="empty-state">Not logged in</div>'; return; }
+    setupEmpData();
+    container.innerHTML = '<div class="flex-between mb-3" style="align-items:center;"><h3 style="font-size:20px;font-weight:600;">\uD83D\uDCCB My Projects</h3><div style="display:flex;align-items:center;gap:8px;"><span class="badge badge-info">' + (user.department||'') + '</span><span style="font-size:14px;font-weight:600;">' + user.fullName + '</span></div></div><div id="empSectionProjects"></div>';
     renderEmpProjectsSec();
+}
+
+function renderEmpReportsPage(container) {
+    var user = AUTH.currentUser();
+    if (!user) { container.innerHTML = '<div class="empty-state">Not logged in</div>'; return; }
+    setupEmpData();
+    container.innerHTML = '<div class="flex-between mb-3" style="align-items:center;"><h3 style="font-size:20px;font-weight:600;">\uD83D\uDCCB My Reports</h3><div style="display:flex;align-items:center;gap:8px;"><span class="badge badge-info">' + (user.department||'') + '</span><span style="font-size:14px;font-weight:600;">' + user.fullName + '</span></div></div><div id="empSectionReports"></div>';
     renderEmpReportsSec();
+}
+
+function renderEmpPerformancePage(container) {
+    var user = AUTH.currentUser();
+    if (!user) { container.innerHTML = '<div class="empty-state">Not logged in</div>'; return; }
+    setupEmpData();
+    container.innerHTML = '<div class="flex-between mb-3" style="align-items:center;"><h3 style="font-size:20px;font-weight:600;">\uD83D\uDCCA My Performance</h3><div style="display:flex;align-items:center;gap:8px;"><span class="badge badge-info">' + (user.department||'') + '</span><span style="font-size:14px;font-weight:600;">' + user.fullName + '</span></div></div><div id="empSectionPerformance"></div>';
     renderEmpPerformanceSec();
 }
 
-function empNav(section, btn) {
-    _empSection = section;
-    document.querySelectorAll('.emp-nav-item').forEach(function(el) { el.classList.remove('active'); });
-    if (btn) btn.classList.add('active');
-    document.querySelectorAll('[id^="empSection"]').forEach(function(el) { el.style.display = 'none'; });
-    var target = document.getElementById('empSection' + section.charAt(0).toUpperCase() + section.slice(1));
-    if (target) target.style.display = 'block';
-}
-
 function empNavStyle() {
+    var style = document.createElement('style');
+    style.textContent = '.emp-nav-item:hover{background:var(--light-gray);}.emp-nav-item.active{background:var(--primary);color:#fff;font-weight:600;}.emp-nav-item.active .badge{background:rgba(255,255,255,0.3);color:#fff;}';
+    document.head.appendChild(style);
+}
     var style = document.createElement('style');
     style.textContent = '.emp-nav-item:hover{background:var(--light-gray);}.emp-nav-item.active{background:var(--primary);color:#fff;font-weight:600;}.emp-nav-item.active .badge{background:rgba(255,255,255,0.3);color:#fff;}';
     document.head.appendChild(style);
