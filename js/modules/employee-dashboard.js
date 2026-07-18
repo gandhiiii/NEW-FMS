@@ -109,10 +109,6 @@ function empNavStyle() {
     style.textContent = '.emp-nav-item:hover{background:var(--light-gray);}.emp-nav-item.active{background:var(--primary);color:#fff;font-weight:600;}.emp-nav-item.active .badge{background:rgba(255,255,255,0.3);color:#fff;}';
     document.head.appendChild(style);
 }
-    var style = document.createElement('style');
-    style.textContent = '.emp-nav-item:hover{background:var(--light-gray);}.emp-nav-item.active{background:var(--primary);color:#fff;font-weight:600;}.emp-nav-item.active .badge{background:rgba(255,255,255,0.3);color:#fff;}';
-    document.head.appendChild(style);
-}
 empNavStyle();
 
 function renderEmpOverview() {
