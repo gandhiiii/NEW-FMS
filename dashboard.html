@@ -40,9 +40,9 @@
     <script src="js/data.js?v=16"></script>
     <script src="js/firebase-config.js"></script>
     <script src="js/sync.js"></script>
-    <script src="js/app.js?v=15"></script>
+    <script src="js/app.js?v=16"></script>
     <script src="js/modules/dashboard-module.js?v=15"></script>
-    <script src="js/modules/users.js?v=15"></script>
+    <script src="js/modules/users.js?v=16"></script>
     <script src="js/modules/departments.js?v=15"></script>
     <script src="js/modules/feature-rights.js?v=15"></script>
     <script src="js/modules/inventory.js?v=15"></script>
@@ -70,7 +70,12 @@
     <script>
         window.addEventListener('DOMContentLoaded', () => {
             Router.init();
-            setTimeout(() => { try { SYNC.init(); } catch(e) { console.warn('Sync init:', e); } }, 500);
+            setTimeout(() => {
+                try { SYNC.init(); } catch(e) { console.warn('Sync init:', e); }
+                setTimeout(function() {
+                    try { if (typeof fixUserPermissions === 'function') fixUserPermissions(); } catch(e) {}
+                }, 2000);
+            }, 500);
         });
     </script>
 </body>

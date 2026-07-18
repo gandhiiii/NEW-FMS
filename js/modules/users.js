@@ -163,9 +163,12 @@ function showUserForm(user) {
 
 function renderPermissionCheckboxes(deptFeatures, userPerms) {
     const allFeatures = [
-        'dashboard', 'users', 'departments', 'inventory', 'gate-security',
-        'projects', 'ambulance', 'problems', 'tasks', 'complaints',
-        'room-checklist', 'admissions', 'lost-found', 'checklists', 'admin-checklists'
+        'dashboard','users','departments','inventory','gate-security',
+        'projects','ambulance','problems','tasks','complaints',
+        'room-checklist','admissions','lost-found','checklists','admin-checklists',
+        'material-requests','suggestions','employee-dashboard','reports','budget','teams',
+        'employee-reports','budget-reports','dept-reports',
+        'hod-audits','quarterly-priorities'
     ];
 
     const inheritedSet = new Set(deptFeatures || []);
@@ -288,4 +291,32 @@ function deleteUser(id) {
         APP.notify('User deleted', 'success');
         renderUsersList();
     });
+}
+
+function fixUserPermissions() {
+    var users = DB.get('users') || [];
+    var changed = false;
+    var rolePerms = {
+        hod: ['dashboard','employee-dashboard','material-requests','suggestions','tasks','checklists','complaints','problems','budget','reports','teams','quarterly-priorities'],
+        employee: ['employee-dashboard','material-requests','suggestions','quarterly-priorities'],
+        storekeeper: ['dashboard','inventory','material-requests','employee-dashboard'],
+        ambulance_employee: ['ambulance']
+    };
+    users.forEach(function(u) {
+        if (u.isSuperAdmin || u.role === 'admin') return;
+        var preset = rolePerms[u.role];
+        if (!preset) return;
+        var needsFix = false;
+        preset.forEach(function(p) {
+            if (!u.permissions || u.permissions.indexOf(p) === -1) needsFix = true;
+        });
+        if (needsFix) {
+            var merged = [];
+            (u.permissions || []).forEach(function(p) { if (merged.indexOf(p) === -1) merged.push(p); });
+            preset.forEach(function(p) { if (merged.indexOf(p) === -1) merged.push(p); });
+            DB.update('users', u.id, { permissions: merged });
+            changed = true;
+        }
+    });
+    if (changed) console.log('fixUserPermissions: updated ' + users.filter(function(u) { return !u.isSuperAdmin && u.role !== 'admin' && rolePerms[u.role]; }).length + ' users');
 }
