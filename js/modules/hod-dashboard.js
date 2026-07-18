@@ -36,7 +36,8 @@ function renderHodDashboard(container) {
         { id: 'maintenance', label: 'Maintenance Identifier', icon: '🔄' },
         { id: 'leave', label: 'Leave Approvals', icon: '🏖️' },
         { id: 'daily-mat', label: 'Daily Material Use', icon: '📝' },
-        { id: 'reports', label: 'Reports', icon: '📊' }
+        { id: 'reports', label: 'Reports', icon: '📊' },
+        { id: 'audit', label: 'Self Audit', icon: '📋' }
     ];
     if (isFacility) tabs.push({ id: 'sub-inv', label: 'Sub Inventory', icon: '📦' });
 
@@ -67,7 +68,8 @@ function switchHodTab(tab, btn) {
         leave: renderHodLeave,
         'daily-mat': renderHodDailyMat,
         'sub-inv': renderHodSubInv,
-        reports: renderHodReports
+        reports: renderHodReports,
+        audit: renderHodAudit
     };
     if (fns[tab]) fns[tab]();
 }
@@ -1213,4 +1215,272 @@ function shareHodReportEmail() {
     data.problems.slice(-10).reverse().forEach(function(p) { body += p.title + ' | ' + (p.area || '-') + ' | ' + (p.status || 'open') + '\n'; });
     body += '\nDownload full Excel report from HMS dashboard.';
     window.open('mailto:?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body), '_blank');
+}
+
+/* ─── SELF AUDIT TAB ─── */
+
+var AUDIT_ITEMS = [
+    'Daily work log reviewed',
+    'Team tasks reviewed and updated',
+    'Pending problems reviewed',
+    'Material requests processed',
+    'Team attendance checked',
+    'Safety inspection completed',
+    'Equipment status verified',
+    'Department cleanliness checked',
+    'Staff performance noted',
+    'Daily report submitted to admin'
+];
+
+function renderHodAudit() {
+    var el = document.getElementById('hodContent');
+    if (!el) return;
+    var user = AUTH.currentUser();
+    var today = new Date().toISOString().split('T')[0];
+    var audits = DB.get('hod_audit') || [];
+    var todayAudit = audits.filter(function(a) { return a.date === today && a.hodId === user.id; });
+    var existing = todayAudit.length > 0 ? todayAudit[0] : null;
+
+    var html =
+        '<div style="margin-bottom:12px;">' +
+            '<h3 style="font-size:16px;font-weight:600;">\uD83D\uDCCB Self Audit - ' + APP.formatDate(today) + '</h3>' +
+        '</div>' +
+        '<div class="card" style="margin-bottom:16px;">' +
+            '<div class="card-header"><h3>\u2705 Daily Self Checklist</h3></div>' +
+            '<div style="padding:12px 16px;">';
+    if (existing && existing.submitted) {
+        var doneCount = (existing.items || []).filter(function(i) { return i.done; }).length;
+        var totalItems = (existing.items || []).length;
+        var pct = totalItems > 0 ? Math.round(doneCount / totalItems * 100) : 0;
+        html += '<div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">' +
+            '<span style="font-size:14px;font-weight:600;color:#34a853;">\u2705 Completed for today (' + doneCount + '/' + totalItems + ')</span>' +
+            '<span style="font-size:13px;color:#888;">Submitted at: ' + (existing.submittedAt ? APP.formatDateTime(existing.submittedAt) : '-') + '</span>' +
+        '</div>' +
+        '<div class="progress-bar" style="height:20px;margin-bottom:12px;"><div class="progress-fill green" style="width:' + pct + '%;line-height:20px;font-size:11px;color:#fff;text-align:center;">' + pct + '%</div></div>';
+    } else {
+        html += '<div style="margin-bottom:12px;color:#ea4335;font-size:13px;">Today\'s audit not yet completed</div>';
+    }
+    html += '<div id="hodAuditItems">';
+    var items = (existing && existing.items) || AUDIT_ITEMS.map(function(label) { return { label: label, done: false }; });
+    items.forEach(function(item, i) {
+        var checked = item.done ? 'checked' : '';
+        var disabled = existing && existing.submitted ? 'disabled' : '';
+        html += '<label style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0;cursor:pointer;">' +
+            '<input type="checkbox" ' + checked + ' ' + disabled + ' onchange="toggleAuditItem(' + i + ',this.checked)" style="width:18px;height:18px;">' +
+            '<span style="font-size:13px;' + (item.done ? 'text-decoration:line-through;color:#888;' : '') + '">' + item.label + '</span>' +
+        '</label>';
+    });
+    html += '</div>';
+
+    html += '<div class="form-group" style="margin-top:12px;"><label>Work Notes / Comments</label>' +
+        '<textarea id="auditNotes" class="form-control" rows="3" ' + (existing && existing.submitted ? 'disabled' : '') + '>' + (existing ? (existing.notes || '') : '') + '</textarea></div>';
+
+    html += '<div style="margin-top:12px;display:flex;gap:8px;">' +
+        (existing && existing.submitted
+            ? '<button class="btn btn-warning" onclick="resetHodAudit()">\u270F Reset &amp; Re-do</button>'
+            : '<button class="btn btn-success" onclick="submitHodAudit()">\u2705 Submit Audit</button>') +
+        '</div></div></div>';
+
+    // Audit History
+    var userAudits = audits.filter(function(a) { return a.hodId === user.id; }).slice().reverse();
+    html += '<div class="card"><div class="card-header"><h3>\uD83D\uDCCA Audit History</h3></div>' +
+        '<div class="table-responsive"><table><thead><tr><th>Date</th><th>Items Done</th><th>Progress</th><th>Submitted At</th><th>Actions</th></tr></thead><tbody>';
+    if (!userAudits.length) {
+        html += '<tr><td colspan="5" class="empty-state">No audits recorded</td></tr>';
+    } else {
+        userAudits.forEach(function(a) {
+            var done = (a.items || []).filter(function(i) { return i.done; }).length;
+            var total = (a.items || []).length;
+            var pct = total > 0 ? Math.round(done / total * 100) : 0;
+            var pctColor = pct >= 80 ? 'green' : (pct >= 50 ? 'yellow' : 'red');
+            html += '<tr>' +
+                '<td>' + APP.formatDate(a.date) + '</td>' +
+                '<td>' + done + '/' + total + '</td>' +
+                '<td><div class="progress-bar" style="width:80px;display:inline-block;"><div class="progress-fill ' + pctColor + '" style="width:' + pct + '%;"></div></div> <span style="font-size:10px;">' + pct + '%</span></td>' +
+                '<td>' + (a.submittedAt ? APP.formatDateTime(a.submittedAt) : '-') + '</td>' +
+                '<td><button class="btn btn-sm btn-info" onclick="viewHodAuditDetail(\'' + a.id + '\')">View</button>' +
+                ' <button class="btn btn-sm btn-danger" onclick="deleteHodAudit(\'' + a.id + '\')">Del</button></td></tr>';
+        });
+    }
+    html += '</tbody></table></div></div>';
+
+    el.innerHTML = html;
+}
+
+var _auditDraft = null;
+
+function toggleAuditItem(index, checked) {
+    if (!_auditDraft) _auditDraft = { items: [] };
+    var labelsEl = document.querySelectorAll('#hodAuditItems label span');
+    var checkboxes = document.querySelectorAll('#hodAuditItems input[type="checkbox"]');
+    if (checkboxes[index]) {
+        checkboxes[index].checked = checked;
+        var span = labelsEl[index];
+        if (span) {
+            span.style.textDecoration = checked ? 'line-through' : 'none';
+            span.style.color = checked ? '#888' : '#222';
+        }
+    }
+    var user = AUTH.currentUser();
+    var today = new Date().toISOString().split('T')[0];
+    var audits = DB.get('hod_audit') || [];
+    var existing = audits.filter(function(a) { return a.date === today && a.hodId === user.id && !a.submitted; });
+    if (existing.length > 0) {
+        var items = existing[0].items || AUDIT_ITEMS.map(function(l) { return { label: l, done: false }; });
+        if (items[index]) items[index].done = checked;
+        existing[0].items = items;
+        DB.set('hod_audit', audits);
+    }
+}
+
+function submitHodAudit() {
+    var user = AUTH.currentUser();
+    var today = new Date().toISOString().split('T')[0];
+    var notes = document.getElementById('auditNotes') ? document.getElementById('auditNotes').value.trim() : '';
+    var checkboxes = document.querySelectorAll('#hodAuditItems input[type="checkbox"]');
+    var labels = document.querySelectorAll('#hodAuditItems label span');
+    var items = [];
+    checkboxes.forEach(function(cb, i) {
+        items.push({ label: labels[i] ? labels[i].textContent : AUDIT_ITEMS[i] || 'Item ' + (i + 1), done: cb.checked });
+    });
+    var doneCount = items.filter(function(i) { return i.done; }).length;
+    if (doneCount === 0) {
+        APP.notify('Check at least one item', 'error');
+        return;
+    }
+    var audits = DB.get('hod_audit') || [];
+    var existing = audits.filter(function(a) { return a.date === today && a.hodId === user.id; });
+    if (existing.length > 0) {
+        existing[0].items = items;
+        existing[0].notes = notes;
+        existing[0].submitted = true;
+        existing[0].submittedAt = new Date().toISOString();
+    } else {
+        audits.push({
+            hodId: user.id,
+            hodName: user.fullName,
+            department: user.department || '',
+            date: today,
+            items: items,
+            notes: notes,
+            submitted: true,
+            submittedAt: new Date().toISOString()
+        });
+    }
+    DB.set('hod_audit', audits);
+    APP.notify('Audit submitted successfully', 'success');
+    renderHodAudit();
+}
+
+function resetHodAudit() {
+    if (!confirm('Reset today\'s audit and re-do?')) return;
+    var user = AUTH.currentUser();
+    var today = new Date().toISOString().split('T')[0];
+    var audits = DB.get('hod_audit') || [];
+    var existing = audits.filter(function(a) { return a.date === today && a.hodId === user.id; });
+    if (existing.length > 0) {
+        existing[0].items = AUDIT_ITEMS.map(function(l) { return { label: l, done: false }; });
+        existing[0].notes = '';
+        existing[0].submitted = false;
+        existing[0].submittedAt = null;
+        DB.set('hod_audit', audits);
+    }
+    APP.notify('Audit reset', 'info');
+    renderHodAudit();
+}
+
+function viewHodAuditDetail(id) {
+    var audits = DB.get('hod_audit') || [];
+    var audit = audits.find(function(a) { return a.id === id; });
+    if (!audit) return;
+    var items = audit.items || [];
+    var done = items.filter(function(i) { return i.done; }).length;
+    var html = '<div style="padding:12px;">' +
+        '<div style="margin-bottom:12px;"><strong>Date:</strong> ' + APP.formatDate(audit.date) + '<br>' +
+        '<strong>HOD:</strong> ' + (audit.hodName || '-') + '<br>' +
+        '<strong>Department:</strong> ' + (audit.department || '-') + '<br>' +
+        '<strong>Submitted:</strong> ' + (audit.submittedAt ? APP.formatDateTime(audit.submittedAt) : '-') + '<br>' +
+        '<strong>Completion:</strong> ' + done + '/' + items.length + '</div>' +
+        '<div class="table-responsive"><table><thead><tr><th>#</th><th>Item</th><th>Status</th></tr></thead><tbody>';
+    items.forEach(function(item, i) {
+        html += '<tr><td>' + (i + 1) + '</td><td>' + item.label + '</td><td>' + (item.done ? '<span class="badge badge-success">Done</span>' : '<span class="badge badge-warning">Pending</span>') + '</td></tr>';
+    });
+    html += '</tbody></table></div>' +
+        (audit.notes ? '<div style="margin-top:12px;"><strong>Notes:</strong><p style="color:#555;">' + audit.notes + '</p></div>' : '') +
+        '</div>';
+    openFormModal('Audit Detail - ' + APP.formatDate(audit.date), html, null);
+}
+
+function deleteHodAudit(id) {
+    if (!confirm('Delete this audit record?')) return;
+    var audits = (DB.get('hod_audit') || []).filter(function(a) { return a.id !== id; });
+    DB.set('hod_audit', audits);
+    APP.notify('Audit deleted', 'success');
+    renderHodAudit();
+}
+
+/* ─── Admin view: show all HOD audits ─── */
+
+function renderAllHodAudits(container) {
+    if (!container) {
+        var content = document.getElementById('pageContent');
+        if (!content) return;
+        container = content;
+    }
+    var audits = DB.get('hod_audit') || [];
+    var depts = DB.get('departments') || [];
+    var today = new Date().toISOString().split('T')[0];
+    var todayAudits = audits.filter(function(a) { return a.date === today; });
+
+    var html = '<div style="margin-bottom:12px;"><h2 style="font-size:18px;font-weight:700;">\uD83D\uDCCA HOD Self Audits</h2></div>';
+
+    // Today's status cards
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:16px;">' +
+        '<div class="card" style="text-align:center;padding:14px;"><div style="font-size:24px;font-weight:700;color:#1a73e8;">' + audits.length + '</div><div style="font-size:11px;color:#888;">Total Audits</div></div>' +
+        '<div class="card" style="text-align:center;padding:14px;"><div style="font-size:24px;font-weight:700;color:#34a853;">' + todayAudits.length + '</div><div style="font-size:11px;color:#888;">Today Submitted</div></div>' +
+        '<div class="card" style="text-align:center;padding:14px;"><div style="font-size:24px;font-weight:700;color:#ea4335;">' + (depts.length - todayAudits.length) + '</div><div style="font-size:11px;color:#888;">Pending Today</div></div>' +
+    '</div>';
+
+    // Per-department summary
+    html += '<div class="card" style="margin-bottom:16px;"><div class="card-header"><h3>\uD83D\uDCCA Today\'s Status by Department</h3></div>' +
+        '<div class="table-responsive"><table><thead><tr><th>Department</th><th>HOD</th><th>Status</th><th>Progress</th><th>Submitted At</th></tr></thead><tbody>';
+    depts.forEach(function(d) {
+        if (d.active === false) return;
+        var deptAudit = todayAudits.filter(function(a) { return a.department === d.name; });
+        if (deptAudit.length > 0) {
+            deptAudit.forEach(function(a) {
+                var done = (a.items || []).filter(function(i) { return i.done; }).length;
+                var total = (a.items || []).length;
+                var pct = total > 0 ? Math.round(done / total * 100) : 0;
+                var pctColor = pct >= 80 ? 'green' : (pct >= 50 ? 'yellow' : 'red');
+                html += '<tr><td><strong>' + d.name + '</strong></td><td>' + (a.hodName || '-') + '</td>' +
+                    '<td><span class="badge badge-success">Submitted</span></td>' +
+                    '<td><div class="progress-bar" style="width:80px;display:inline-block;"><div class="progress-fill ' + pctColor + '" style="width:' + pct + '%;"></div></div> ' + pct + '%</td>' +
+                    '<td>' + (a.submittedAt ? APP.formatDateTime(a.submittedAt) : '-') + '</td></tr>';
+            });
+        } else {
+            html += '<tr><td><strong>' + d.name + '</strong></td><td>-</td><td><span class="badge badge-warning">Pending</span></td><td>-</td><td>-</td></tr>';
+        }
+    });
+    html += '</tbody></table></div></div>';
+
+    // All audit history
+    html += '<div class="card"><div class="card-header"><h3>\uD83D\uDCCB All Audit History</h3></div>' +
+        '<div class="table-responsive"><table><thead><tr><th>Date</th><th>HOD</th><th>Department</th><th>Items Done</th><th>Progress</th><th>Actions</th></tr></thead><tbody>';
+    if (!audits.length) {
+        html += '<tr><td colspan="6" class="empty-state">No audits found</td></tr>';
+    } else {
+        audits.slice().reverse().forEach(function(a) {
+            var done = (a.items || []).filter(function(i) { return i.done; }).length;
+            var total = (a.items || []).length;
+            var pct = total > 0 ? Math.round(done / total * 100) : 0;
+            html += '<tr><td>' + APP.formatDate(a.date) + '</td><td>' + (a.hodName || '-') + '</td><td>' + (a.department || '-') + '</td>' +
+                '<td>' + done + '/' + total + '</td>' +
+                '<td><div class="progress-bar" style="width:60px;display:inline-block;"><div class="progress-fill ' + (pct >= 80 ? 'green' : pct >= 50 ? 'yellow' : 'red') + '" style="width:' + pct + '%;"></div></div> ' + pct + '%</td>' +
+                '<td><button class="btn btn-sm btn-info" onclick="viewHodAuditDetail(\'' + a.id + '\')">View</button></td></tr>';
+        });
+    }
+    html += '</tbody></table></div></div>';
+
+    if (container) container.innerHTML = html;
 }

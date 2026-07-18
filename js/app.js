@@ -77,7 +77,8 @@ const Router = {
             { id: 'employee-reports', label: 'Employee Reports', icon: '👤', permission: 'reports' },
             { id: 'budget-reports', label: 'Budget Reports', icon: '💹', permission: 'budget' },
             { id: 'dept-reports', label: 'Department Reports', icon: '🏛️', permission: 'reports' },
-            { id: 'teams', label: 'Teams', icon: '👥', permission: 'teams' }
+            { id: 'teams', label: 'Teams', icon: '👥', permission: 'teams' },
+            { id: 'hod-audits', label: 'HOD Audits', icon: '📋', permission: 'dashboard' }
         ];
         let html = '';
         items.forEach(item => {
@@ -117,7 +118,8 @@ const Router = {
             'budget-reports': 'Budget Reports',
             'dept-reports': 'Department Reports',
             teams: 'Team Management',
-            'hod-dashboard': 'HOD Dashboard'
+            'hod-dashboard': 'HOD Dashboard',
+            'hod-audits': 'HOD Audits'
         };
         document.getElementById('pageTitle').textContent = titles[module] || module;
         const content = document.getElementById('pageContent');
@@ -150,6 +152,7 @@ const Router = {
             'dept-reports': renderDeptReports,
             teams: renderTeams,
             'hod-dashboard': renderHodDashboard,
+            'hod-audits': renderAllHodAudits,
             'employee-dashboard': renderEmployeeDashboard
         };
         if (renderers[module]) {

@@ -206,6 +206,13 @@ function renderDashboard(container) {
 
         <div class="grid-2" style="margin-top:20px;">
             <div class="card">
+                <div class="card-header">
+                    <h2>📋 HOD Self Audits</h2>
+                    <button class="btn btn-sm btn-outline" onclick="Router.navigate('hod-audits')">View All</button>
+                </div>
+                <div id="hodAuditSummary"></div>
+            </div>
+            <div class="card">
                 <div class="card-header"><h2>⚡ Quick Actions</h2></div>
                 <div class="grid-2">
                     <button class="btn btn-primary" onclick="Router.navigate('admissions')">New Admission</button>
@@ -242,7 +249,10 @@ function renderDashboard(container) {
         </div>
     `).join('') || '<div class="empty-state">No recent activity</div>';
 
-    if (isAdmin) renderDashAdmTasks();
+    if (isAdmin) {
+        renderDashAdmTasks();
+        renderHodAuditSummary();
+    }
 }
 
 function renderDashAdmTasks() {
@@ -257,6 +267,41 @@ function renderDashAdmTasks() {
         return;
     }
     list.innerHTML = items.slice().reverse().map(i => `
+}
+
+function renderHodAuditSummary() {
+    var el = document.getElementById('hodAuditSummary');
+    if (!el) return;
+    var audits = DB.get('hod_audit') || [];
+    var depts = DB.get('departments') || [];
+    var today = new Date().toISOString().split('T')[0];
+    var todayAudits = audits.filter(function(a) { return a.date === today; });
+    var pending = depts.filter(function(d) { return d.active !== false && !todayAudits.some(function(a) { return a.department === d.name; }); });
+    if (!depts.length) {
+        el.innerHTML = '<div class="empty-state" style="padding:12px;">No departments configured</div>';
+        return;
+    }
+    var totalDone = 0, totalItems = 0;
+    todayAudits.forEach(function(a) {
+        var items = a.items || [];
+        totalDone += items.filter(function(i) { return i.done; }).length;
+        totalItems += items.length;
+    });
+    var overallPct = totalItems > 0 ? Math.round(totalDone / totalItems * 100) : 0;
+    var html = '<div style="padding:12px 16px;">' +
+        '<div style="display:flex;gap:16px;margin-bottom:8px;flex-wrap:wrap;">' +
+            '<span style="font-size:13px;">Submitted: <strong>' + todayAudits.length + '/' + depts.length + '</strong></span>' +
+            '<span style="font-size:13px;">Pending: <strong style="color:#ea4335;">' + pending.length + '</strong></span>' +
+            '<span style="font-size:13px;">Overall Progress: <strong>' + overallPct + '%</strong></span>' +
+        '</div>' +
+        '<div class="progress-bar" style="height:16px;"><div class="progress-fill ' + (overallPct >= 80 ? 'green' : overallPct >= 50 ? 'yellow' : 'red') + '" style="width:' + overallPct + '%;line-height:16px;font-size:10px;color:#fff;text-align:center;">' + overallPct + '%</div></div>' +
+        '<div style="margin-top:8px;font-size:12px;color:#888;">';
+    pending.forEach(function(d, i) {
+        html += (i > 0 ? ', ' : '') + d.name;
+    });
+    html += (pending.length ? ' not yet submitted' : ' All departments submitted today') + '</div></div>';
+    el.innerHTML = html;
+}
         <div style="display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid var(--border);font-size:13px;">
             <input type="checkbox" onchange="dashToggleAdmTask('${i.id}')" style="width:16px;height:16px;">
             <span style="flex:1;">${i.text}</span>
