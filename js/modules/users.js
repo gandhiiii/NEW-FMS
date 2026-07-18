@@ -1,4 +1,30 @@
+const ROLE_PERMS = {
+    hod: ['dashboard','employee-dashboard','material-requests','suggestions','tasks','checklists','complaints','problems','budget','reports','teams','quarterly-priorities'],
+    employee: ['employee-dashboard','material-requests','suggestions','quarterly-priorities'],
+    storekeeper: ['dashboard','inventory','material-requests','employee-dashboard'],
+    ambulance_employee: ['ambulance']
+};
+
+function fixUserPermissions() {
+    const users = DB.get('users') || [];
+    let changed = false;
+    users.forEach(u => {
+        if (u.isSuperAdmin) return;
+        const needed = ROLE_PERMS[u.role];
+        if (!needed) return;
+        const perms = Array.isArray(u.permissions) ? u.permissions : [];
+        const missing = needed.filter(p => !perms.includes(p));
+        if (missing.length > 0) {
+            u.permissions = [...perms, ...missing];
+            changed = true;
+        }
+    });
+    if (changed) DB.set('users', users);
+}
+
 function renderUsers(container) {
+    fixUserPermissions();
+
     var users = DB.get('users');
 
     container.innerHTML = `
@@ -165,7 +191,10 @@ function renderPermissionCheckboxes(deptFeatures, userPerms) {
     const allFeatures = [
         'dashboard', 'users', 'departments', 'inventory', 'gate-security',
         'projects', 'ambulance', 'problems', 'tasks', 'complaints',
-        'room-checklist', 'admissions', 'lost-found', 'checklists', 'admin-checklists'
+        'room-checklist', 'admissions', 'lost-found', 'checklists', 'admin-checklists',
+        'material-requests', 'suggestions', 'employee-dashboard', 'reports', 'budget',
+        'teams', 'employee-reports', 'budget-reports', 'dept-reports',
+        'hod-audits', 'quarterly-priorities'
     ];
 
     const inheritedSet = new Set(deptFeatures || []);
@@ -204,17 +233,11 @@ function onRoleChange(select) {
     const grid = document.getElementById('permissionsGrid');
     if (!grid) return;
     const allCbs = document.querySelectorAll('[name="permissions"]');
-    const rolePerms = {
-        hod: ['dashboard','employee-dashboard','material-requests','suggestions','tasks','checklists','complaints','problems','budget','reports','teams','quarterly-priorities'],
-        employee: ['employee-dashboard','material-requests','suggestions','quarterly-priorities'],
-        storekeeper: ['dashboard','inventory','material-requests','employee-dashboard'],
-        ambulance_employee: ['ambulance']
-    };
-    const perms = rolePerms[role];
+    const perms = ROLE_PERMS[role];
     if (perms) {
         allCbs.forEach(cb => cb.checked = perms.indexOf(cb.value) > -1);
     }
-    if (!rolePerms[role]) {
+    if (!ROLE_PERMS[role]) {
         allCbs.forEach(cb => cb.checked = false);
     }
 }
