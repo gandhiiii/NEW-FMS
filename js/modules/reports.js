@@ -303,34 +303,188 @@ function buildEmpKPISection(empName, ctx) {
 
 /* ─── Budget Section Helper ─── */
 
-function buildBudgetSection() {
+function getExpensesByDept(fromDate, toDate) {
+    var from = fromDate ? new Date(fromDate) : new Date(0);
+    var to = toDate ? new Date(toDate) : new Date(864e13);
+    var inRange = function(d) { if (!d) return true; var dt = new Date(d); return dt >= from && dt <= to; };
+    var deptMap = {};
+    var add = function(d, amt, cat) {
+        if (!d) d = 'Other';
+        if (!deptMap[d]) deptMap[d] = { department: d, materialPurchase: 0, maintenanceCost: 0, ambulanceFare: 0, projectSpent: 0, total: 0 };
+        deptMap[d][cat] = (deptMap[d][cat] || 0) + amt;
+        deptMap[d].total += amt;
+    };
+    try {
+        (DB.get('inventory_receipts') || []).forEach(function(r) {
+            if (!inRange(r.createdAt)) return;
+            var t = parseFloat(r.total) || 0;
+            add(r.department || 'Other', t, 'materialPurchase');
+        });
+    } catch(e) {}
+    try {
+        (DB.get('problems') || []).forEach(function(p) {
+            if (!inRange(p.createdAt)) return;
+            var c = parseFloat(p.maintenanceCost || p.cost || 0);
+            if (c > 0) add(p.department || p.area || 'Other', c, 'maintenanceCost');
+        });
+    } catch(e) {}
+    try {
+        (DB.get('ambulance_trips') || []).forEach(function(t) {
+            if (!inRange(t.createdAt)) return;
+            var f = parseFloat(t.fare) || 0;
+            if (f > 0) add('Ambulance', f, 'ambulanceFare');
+        });
+    } catch(e) {}
+    try {
+        (DB.get('projects') || []).forEach(function(p) {
+            var ps = parseFloat(p.spent) || 0;
+            if (ps > 0) add(p.department || 'Other', ps, 'projectSpent');
+        });
+    } catch(e) {}
+    return deptMap;
+}
+
+function budgetExpenseTotal(deptMap) {
+    var mp = 0, mc = 0, af = 0, ps = 0;
+    Object.keys(deptMap).forEach(function(d) {
+        mp += deptMap[d].materialPurchase || 0;
+        mc += deptMap[d].maintenanceCost || 0;
+        af += deptMap[d].ambulanceFare || 0;
+        ps += deptMap[d].projectSpent || 0;
+    });
+    return { materialPurchase: mp, maintenanceCost: mc, ambulanceFare: af, projectSpent: ps, totalExpense: mp + mc + af + ps };
+}
+
+function buildBudgetSections(ctx) {
+    var sections = [];
     try {
         var cfg = DB.get('budgetConfig');
-        if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) return null;
+        if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) return [];
         var tb = parseFloat(cfg.totalBudget) || 0;
-        if (!tb) return null;
-        var me = 0, mc = 0, af = 0, ps = 0;
-        (DB.get('inventory_receipts') || []).forEach(function(r) { me += parseFloat(r.total) || 0; });
-        (DB.get('problems') || []).forEach(function(p) { mc += parseFloat(p.maintenanceCost || p.cost || 0) || 0; });
-        (DB.get('ambulance_trips') || []).forEach(function(t) { af += parseFloat(t.fare) || 0; });
-        (DB.get('projects') || []).forEach(function(p) { ps += parseFloat(p.spent) || 0; });
-        var te = me + mc + af + ps;
-        return {
-            title: 'Budget Overview',
+        if (!tb) return [];
+
+        var from = ctx && ctx.from ? ctx.from : '';
+        var to = ctx && ctx.to ? ctx.to : '';
+        var deptMap = getExpensesByDept(from, to);
+        var totals = budgetExpenseTotal(deptMap);
+
+        // 1. Budget Overview
+        var te = totals.totalExpense;
+        sections.push({
+            title: 'Budget Overview (' + (cfg.fiscalYear || 'N/A') + ')',
             total: 1,
             cols: ['Metric', 'Amount (₹)'],
             rows: [
                 ['Total Budget', '₹' + tb.toLocaleString()],
-                ['Material Purchase', '₹' + me.toLocaleString()],
-                ['Maintenance Cost', '₹' + mc.toLocaleString()],
-                ['Ambulance Fare', '₹' + af.toLocaleString()],
-                ['Project Spent', '₹' + ps.toLocaleString()],
+                ['Material Purchase', '₹' + totals.materialPurchase.toLocaleString()],
+                ['Maintenance Cost', '₹' + totals.maintenanceCost.toLocaleString()],
+                ['Ambulance Fare', '₹' + totals.ambulanceFare.toLocaleString()],
+                ['Project Spent', '₹' + totals.projectSpent.toLocaleString()],
                 ['Total Expense', '₹' + te.toLocaleString()],
                 ['Remaining', '₹' + Math.max(0, tb - te).toLocaleString()],
                 ['Utilization', (tb > 0 ? Math.round((te / tb) * 100) : 0) + '%']
             ]
-        };
-    } catch (e) { return null; }
+        });
+
+        // 2. Period breakdown (daily/weekly/monthly segments based on range)
+        if (from && to) {
+            var d1 = new Date(from), d2 = new Date(to);
+            var diffDays = Math.ceil((d2 - d1) / 86400000);
+            var periodLabel, periodData;
+            if (diffDays <= 7) {
+                periodLabel = 'Daily';
+                periodData = buildDailyBudget(from, to);
+            } else if (diffDays <= 60) {
+                periodLabel = 'Weekly';
+                periodData = buildWeeklyBudget(from, to);
+            } else {
+                periodLabel = 'Monthly';
+                periodData = buildMonthlyBudget(from, to);
+            }
+            if (periodData && periodData.length > 0) {
+                var pRows = periodData.map(function(p) {
+                    return [p.label, '₹' + (p.mp || 0).toLocaleString(), '₹' + (p.mc || 0).toLocaleString(), '₹' + (p.ps || 0).toLocaleString(), '₹' + (p.total || 0).toLocaleString()];
+                });
+                sections.push({
+                    title: periodLabel + ' Budget Breakdown',
+                    total: pRows.length,
+                    cols: ['Period', 'Material Purchase', 'Maintenance', 'Project Spent', 'Total'],
+                    rows: pRows
+                });
+            }
+        }
+
+        // 3. Department-wise breakdown
+        var deptRows = [];
+        var deptNamesSorted = Object.keys(deptMap).sort();
+        deptNamesSorted.forEach(function(d) {
+            var dd = deptMap[d];
+            deptRows.push([d, '₹' + (dd.materialPurchase || 0).toLocaleString(), '₹' + (dd.maintenanceCost || 0).toLocaleString(), '₹' + (dd.ambulanceFare || 0).toLocaleString(), '₹' + (dd.projectSpent || 0).toLocaleString(), '₹' + (dd.total || 0).toLocaleString()]);
+        });
+        if (deptRows.length > 0) {
+            sections.push({
+                title: 'Department-wise Expenses',
+                total: deptRows.length,
+                cols: ['Department', 'Material Purchase', 'Maintenance', 'Ambulance', 'Project Spent', 'Total'],
+                rows: deptRows
+            });
+        }
+    } catch (e) {}
+    return sections;
+}
+
+function buildDailyBudget(from, to) {
+    var ranges = [];
+    var d = new Date(from);
+    var end = new Date(to);
+    while (d <= end) {
+        var dayStart = new Date(d);
+        var dayEnd = new Date(d);
+        dayEnd.setHours(23, 59, 59, 999);
+        ranges.push({ label: dayStart.toISOString().split('T')[0], start: dayStart.toISOString(), end: dayEnd.toISOString() });
+        d.setDate(d.getDate() + 1);
+    }
+    return computePeriodExpenses(ranges);
+}
+
+function buildWeeklyBudget(from, to) {
+    var ranges = [];
+    var d = new Date(from);
+    d.setDate(d.getDate() - d.getDay());
+    var end = new Date(to);
+    while (d <= end) {
+        var ws = new Date(d);
+        var we = new Date(d);
+        we.setDate(d.getDate() + 6);
+        we.setHours(23, 59, 59, 999);
+        ranges.push({ label: ws.toISOString().split('T')[0] + ' - ' + we.toISOString().split('T')[0], start: ws.toISOString(), end: we.toISOString() });
+        d.setDate(d.getDate() + 7);
+    }
+    return computePeriodExpenses(ranges);
+}
+
+function buildMonthlyBudget(from, to) {
+    var ranges = [];
+    var d = new Date(from);
+    d.setDate(1);
+    var end = new Date(to);
+    while (d <= end) {
+        var ms = new Date(d);
+        var me = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+        ranges.push({ label: d.toISOString().substr(0, 7), start: ms.toISOString(), end: me.toISOString() });
+        d.setMonth(d.getMonth() + 1);
+    }
+    return computePeriodExpenses(ranges);
+}
+
+function computePeriodExpenses(ranges) {
+    var result = [];
+    ranges.forEach(function(r) {
+        var dm = getExpensesByDept(r.start, r.end);
+        var totals = budgetExpenseTotal(dm);
+        result.push({ label: r.label, mp: totals.materialPurchase, mc: totals.maintenanceCost, af: totals.ambulanceFare, ps: totals.projectSpent, total: totals.totalExpense });
+    });
+    return result;
 }
 
 /* ─── Employee Summary Helper ─── */
@@ -367,8 +521,8 @@ function buildOverallReport(ctx) {
     const kpiSection = buildOverallKPISection(ctx);
     if (kpiSection) sections.push(kpiSection);
 
-    var bdgSec = buildBudgetSection();
-    if (bdgSec) sections.push(bdgSec);
+    var bdgSecs = buildBudgetSections(ctx);
+    bdgSecs.forEach(function(s) { sections.push(s); });
 
     var empSec = buildEmployeeSummarySection(ctx);
     if (empSec) sections.push(empSec);
@@ -395,8 +549,8 @@ function buildDeptReport(ctx) {
     const depts = dept ? [{ name: dept }] : (DB.get('departments') || []).filter(d => d.active !== false);
     const sections = [];
 
-    var bdgSec = buildBudgetSection();
-    if (bdgSec) sections.push(bdgSec);
+    var bdgSecs = buildBudgetSections(ctx);
+    bdgSecs.forEach(function(s) { sections.push(s); });
 
     var empSec = buildEmployeeSummarySection(ctx);
     if (empSec) sections.push(empSec);
@@ -471,8 +625,8 @@ function buildCategoryReport(ctx) {
     const { from, to, cat } = ctx;
     const sections = [];
 
-    var bdgSec = buildBudgetSection();
-    if (bdgSec) sections.push(bdgSec);
+    var bdgSecs = buildBudgetSections(ctx);
+    bdgSecs.forEach(function(s) { sections.push(s); });
 
     var empSec = buildEmployeeSummarySection(ctx);
     if (empSec) sections.push(empSec);
@@ -1034,33 +1188,36 @@ function exportExcel() {
             var budgetConfig = DB.get('budgetConfig') || {};
             if (budgetConfig.totalBudget > 0) {
                 var totalBudget = parseFloat(budgetConfig.totalBudget) || 0;
-                var totalExp = 0, matPurch = 0, maint = 0, ambFare = 0, projSpent = 0;
-                var allReceipts = DB.get('inventory_receipts') || [];
-                allReceipts.forEach(function(r) { matPurch += parseFloat(r.total) || 0; });
-                var allTrips = DB.get('ambulance_trips') || [];
-                allTrips.forEach(function(t) { ambFare += parseFloat(t.fare) || 0; });
-                var allProblems = DB.get('problems') || [];
-                allProblems.forEach(function(p) { maint += parseFloat(p.maintenanceCost || p.cost || 0) || 0; });
-                var allProjects = DB.get('projects') || [];
-                allProjects.forEach(function(p) { projSpent += parseFloat(p.spent) || 0; });
-                totalExp = matPurch + maint + ambFare + projSpent;
-                var remaining = totalBudget - totalExp;
-                var utilPct = totalBudget > 0 ? Math.round((totalExp / totalBudget) * 100) : 0;
+                var deptMap = getExpensesByDept(from, to);
+                var totals = budgetExpenseTotal(deptMap);
+                var remaining = totalBudget - totals.totalExpense;
+                var utilPct = totalBudget > 0 ? Math.round((totals.totalExpense / totalBudget) * 100) : 0;
 
                 var bdgCols = ['Metric', 'Amount (₹)'];
                 var bdgRows = [
                     ['Fiscal Year', budgetConfig.fiscalYear || '-'],
                     ['Total Budget', totalBudget.toFixed(2)],
                     ['Maintenance Budget', parseFloat(budgetConfig.maintenanceBudget || 0).toFixed(2)],
-                    ['Material Purchase Cost', matPurch.toFixed(2)],
-                    ['Maintenance Cost', maint.toFixed(2)],
-                    ['Ambulance Fare Collected', ambFare.toFixed(2)],
-                    ['Project Spent', projSpent.toFixed(2)],
-                    ['Total Expense', totalExp.toFixed(2)],
-                    ['Remaining Budget', remaining.toFixed(2)],
+                    ['Material Purchase Cost', totals.materialPurchase.toFixed(2)],
+                    ['Maintenance Cost', totals.maintenanceCost.toFixed(2)],
+                    ['Ambulance Fare Collected', totals.ambulanceFare.toFixed(2)],
+                    ['Project Spent', totals.projectSpent.toFixed(2)],
+                    ['Total Expense', totals.totalExpense.toFixed(2)],
+                    ['Remaining Budget', Math.max(0, remaining).toFixed(2)],
                     ['Utilization Rate', utilPct + '%']
                 ];
                 addSheet('Budget Overview', bdgCols, bdgRows);
+
+                // Department-wise budget sheet
+                var deptNamesSorted = Object.keys(deptMap).sort();
+                if (deptNamesSorted.length > 0) {
+                    var dCols = ['Department', 'Material Purchase', 'Maintenance', 'Ambulance', 'Project Spent', 'Total'];
+                    var dRows = deptNamesSorted.map(function(d) {
+                        var dd = deptMap[d];
+                        return [d, (dd.materialPurchase||0).toFixed(2), (dd.maintenanceCost||0).toFixed(2), (dd.ambulanceFare||0).toFixed(2), (dd.projectSpent||0).toFixed(2), (dd.total||0).toFixed(2)];
+                    });
+                    addSheet('Dept Expenses', dCols, dRows);
+                }
             }
         } catch (e) { console.warn('Budget sheet error:', e); }
 

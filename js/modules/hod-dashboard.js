@@ -1031,6 +1031,15 @@ function getHodReportData() {
     var lTotal = allLeaves.length, lApproved = allLeaves.filter(function(l) { return l.status === 'approved'; }).length;
     var bTotal = allBds.length, bResolved = allBds.filter(function(b) { return b.status === 'resolved'; }).length;
 
+    // Budget data
+    var cfg = DB.get('budgetConfig');
+    var deptBudget = {};
+    if (cfg && parseFloat(cfg.totalBudget) > 0) {
+        var deptMap = (typeof getExpensesByDept !== 'undefined') ? getExpensesByDept(from, to) : {};
+        var dd = deptMap[dept] || { materialPurchase: 0, maintenanceCost: 0, ambulanceFare: 0, projectSpent: 0, total: 0 };
+        deptBudget = { totalBudget: parseFloat(cfg.totalBudget) || 0, deptExpense: dd.total, materialPurchase: dd.materialPurchase, maintenanceCost: dd.maintenanceCost, projectSpent: dd.projectSpent };
+    }
+
     return {
         dept: dept, from: from, to: to,
         users: deptUsers,
@@ -1040,7 +1049,8 @@ function getHodReportData() {
         pTotal: pTotal, pDone: pDone, pRate: pRate,
         mTotal: mTotal, mApproved: mApproved,
         lTotal: lTotal, lApproved: lApproved,
-        bTotal: bTotal, bResolved: bResolved
+        bTotal: bTotal, bResolved: bResolved,
+        deptBudget: deptBudget
     };
 }
 
@@ -1064,7 +1074,20 @@ function generateHodReport() {
             '<div class="card" style="text-align:center;padding:12px;"><div style="font-size:22px;font-weight:700;color:#34a853;">' + data.bTotal + '</div><div style="font-size:11px;color:#888;">Breakdowns (' + data.bResolved + ' resolved)</div></div>' +
             '<div class="card" style="text-align:center;padding:12px;"><div style="font-size:22px;font-weight:700;color:#7b1fa2;">' + data.lTotal + '</div><div style="font-size:11px;color:#888;">Leaves (' + data.lApproved + ' approved)</div></div>' +
             '<div class="card" style="text-align:center;padding:12px;"><div style="font-size:22px;font-weight:700;color:#00bcd4;">' + data.users.length + '</div><div style="font-size:11px;color:#888;">Team Members</div></div>' +
-        '</div>';
+            (data.deptBudget && data.deptBudget.totalBudget > 0 ?
+                '<div class="card" style="text-align:center;padding:12px;"><div style="font-size:22px;font-weight:700;color:#34a853;">₹' + (data.deptBudget.deptExpense || 0).toLocaleString() + '</div><div style="font-size:11px;color:#888;">Dept Expense</div></div>' +
+                '<div class="card" style="text-align:center;padding:12px;"><div style="font-size:22px;font-weight:700;color:#1a73e8;">₹' + Math.max(0, (data.deptBudget.totalBudget - data.deptBudget.deptExpense)).toLocaleString() + '</div><div style="font-size:11px;color:#888;">Remaining Budget</div></div>'
+            : '') +
+        '</div>' +
+        (data.deptBudget && data.deptBudget.totalBudget > 0 ?
+            '<div class="card" style="margin-bottom:12px;"><div class="card-header"><h3>\uD83D\uDCC8 Department Budget</h3></div><div class="table-responsive"><table><thead><tr><th>Metric</th><th>Amount (₹)</th></tr></thead><tbody>' +
+                '<tr><td>Material Purchase</td><td>₹' + (data.deptBudget.materialPurchase || 0).toLocaleString() + '</td></tr>' +
+                '<tr><td>Maintenance Cost</td><td>₹' + (data.deptBudget.maintenanceCost || 0).toLocaleString() + '</td></tr>' +
+                '<tr><td>Project Spent</td><td>₹' + (data.deptBudget.projectSpent || 0).toLocaleString() + '</td></tr>' +
+                '<tr><td><strong>Total Expense</strong></td><td><strong>₹' + (data.deptBudget.deptExpense || 0).toLocaleString() + '</strong></td></tr>' +
+                '<tr><td><strong>Remaining</strong></td><td><strong style="color:' + (Math.max(0, data.deptBudget.totalBudget - data.deptBudget.deptExpense) > 0 ? '#34a853' : '#ea4335') + ';">₹' + Math.max(0, data.deptBudget.totalBudget - data.deptBudget.deptExpense).toLocaleString() + '</strong></td></tr>' +
+            '</tbody></table></div></div>'
+        : '');
 
     html += '<div class="card" style="margin-bottom:12px;"><div class="card-header"><h3>\u2705 Tasks (' + data.tTotal + ')</h3></div>' +
         '<div class="table-responsive" style="max-height:200px;overflow-y:auto;"><table><thead><tr><th>Title</th><th>Assigned To</th><th>Priority</th><th>TAT</th><th>Status</th></tr></thead><tbody>';
@@ -1113,6 +1136,9 @@ function exportHodReportExcel() {
             ['Breakdowns Reported', data.bTotal], ['Breakdowns Resolved', data.bResolved], ['', ''],
             ['Leave Requests', data.lTotal], ['Leaves Approved', data.lApproved]
         ];
+        if (data.deptBudget && data.deptBudget.totalBudget > 0) {
+            sumRows.push(['', ''], ['--- Budget ---', ''], ['Total Budget', '₹' + data.deptBudget.totalBudget.toLocaleString()], ['Department Expense', '₹' + (data.deptBudget.deptExpense || 0).toLocaleString()], ['Material Purchase', '₹' + (data.deptBudget.materialPurchase || 0).toLocaleString()], ['Maintenance Cost', '₹' + (data.deptBudget.maintenanceCost || 0).toLocaleString()], ['Project Spent', '₹' + (data.deptBudget.projectSpent || 0).toLocaleString()], ['Remaining', '₹' + Math.max(0, data.deptBudget.totalBudget - data.deptBudget.deptExpense).toLocaleString()]);
+        }
         var ws1 = XLSX.utils.aoa_to_sheet([sumCols].concat(sumRows));
         XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
 
